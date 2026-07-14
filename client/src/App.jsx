@@ -7,6 +7,7 @@ import History from './pages/driver/History';
 import Collections from './pages/admin/Collections';
 import Parties from './pages/admin/Parties';
 import Drivers from './pages/admin/Drivers';
+import Admins from './pages/admin/Admins';
 import Reports from './pages/admin/Reports';
 import Settings from './pages/admin/Settings';
 
@@ -27,6 +28,7 @@ const adminLinks = [
   { to: '/admin/reports', label: 'Reports', icon: 'chart-bar' },
   { to: '/admin/parties', label: 'Parties', icon: 'storefront' },
   { to: '/admin/drivers', label: 'Drivers', icon: 'truck' },
+  { to: '/admin/admins', label: 'Admins', icon: 'shield' },
   { to: '/admin/settings', label: 'Settings', icon: 'adjustments' },
 ];
 
@@ -59,6 +61,7 @@ export default function App() {
         <Route path="/admin/reports" element={<Reports />} />
         <Route path="/admin/parties" element={<Parties />} />
         <Route path="/admin/drivers" element={<Drivers />} />
+        <Route path="/admin/admins" element={<Admins />} />
         <Route path="/admin/settings" element={<Settings />} />
       </Route>
 

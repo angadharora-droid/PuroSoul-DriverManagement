@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Icon from './icons';
 import { Avatar } from './ui';
+import ChangePasswordModal from './ChangePasswordModal';
 
 function BrandMark({ className = 'h-9 w-9' }) {
   return (
@@ -16,6 +18,7 @@ export { BrandMark };
 export default function Layout({ links }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [showPassword, setShowPassword] = useState(false);
 
   return (
     <div className="min-h-dvh">
@@ -37,6 +40,14 @@ export default function Layout({ links }) {
                   {user?.role}
                 </span>
               </span>
+              <button
+                onClick={() => setShowPassword(true)}
+                className="flex min-h-11 cursor-pointer items-center gap-1.5 rounded-xl px-3 text-sm font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Change password"
+              >
+                <Icon name="lock" className="h-4.5 w-4.5" />
+                <span className="hidden sm:inline">Password</span>
+              </button>
               <button
                 onClick={() => {
                   logout();
@@ -74,6 +85,7 @@ export default function Layout({ links }) {
       <main className="mx-auto max-w-6xl px-4 py-6 pb-16">
         <Outlet />
       </main>
+      <ChangePasswordModal open={showPassword} onClose={() => setShowPassword(false)} />
     </div>
   );
 }

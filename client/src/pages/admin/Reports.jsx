@@ -3,7 +3,7 @@ import { api, apiDownload } from '../../api/client';
 import { Button, EmptyState, StatCard, Alert, SegmentedControl, TableSkeleton, PageHeader, Avatar, inputClass } from '../../components/ui';
 import Icon from '../../components/icons';
 import { useToast } from '../../components/toast';
-import { formatINR, formatDate, todayStr, STATUS_LABELS } from '../../utils/format';
+import { formatINR, formatDateTime, todayStr, STATUS_LABELS } from '../../utils/format';
 
 const TABS = [
   { value: 'daily', label: 'Daily', icon: 'calendar' },
@@ -24,6 +24,7 @@ export default function Reports() {
   const [drivers, setDrivers] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -57,6 +58,15 @@ export default function Reports() {
     apiDownload('/api/reports', { ...params(), format }, `report.${format}`)
       .then(() => toast(`${format.toUpperCase()} report downloaded`))
       .catch((e) => toast(e.message, 'error'));
+  }
+
+  function emailDayEnd() {
+    setSending(true);
+    api
+      .post('/api/reports/day-end', { date })
+      .then((d) => toast(`Report emailed to ${d.recipients.length} recipient${d.recipients.length === 1 ? '' : 's'}`))
+      .catch((e) => toast(e.message, 'error'))
+      .finally(() => setSending(false));
   }
 
   const otherStatuses = report ? Object.entries(report.statusCounts || {}).filter(([s]) => s !== 'verified') : [];
@@ -108,9 +118,12 @@ export default function Reports() {
             )}
           </>
         )}
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
           <Button variant="secondary" icon="download" onClick={() => download('csv')}>CSV</Button>
           <Button variant="secondary" icon="receipt" onClick={() => download('pdf')}>PDF</Button>
+          {tab === 'daily' && (
+            <Button icon="send" loading={sending} onClick={emailDayEnd}>Email report</Button>
+          )}
         </div>
       </div>
 
@@ -184,7 +197,7 @@ export default function Reports() {
                       <tbody>
                         {g.rows.map((r) => (
                           <tr key={r.id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50/70">
-                            <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{formatDate(r.date)}</td>
+                            <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{formatDateTime(r.date)}</td>
                             <td className="tnum px-4 py-2.5 font-mono text-xs text-slate-500">{r.ref}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-900">{r.party}</td>
                             <td className="px-4 py-2.5 text-slate-500">{r.driver}</td>

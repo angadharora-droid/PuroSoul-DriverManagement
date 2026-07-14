@@ -5,10 +5,12 @@ import { connectDb } from './config/db.js';
 import authRoutes from './routes/auth.js';
 import partyRoutes from './routes/parties.js';
 import driverRoutes from './routes/drivers.js';
+import adminRoutes from './routes/admins.js';
 import collectionRoutes from './routes/collections.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import { errorHandler, notFound } from './middleware/error.js';
+import { scheduleDayEndReport } from './services/dayend.js';
 
 if (!process.env.JWT_SECRET) {
   console.warn('[warn] JWT_SECRET is not set — using an insecure development default. Set it in .env before going live.');
@@ -25,6 +27,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'purosoul-ca
 app.use('/api/auth', authRoutes);
 app.use('/api/parties', partyRoutes);
 app.use('/api/drivers', driverRoutes);
+app.use('/api/admins', adminRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
@@ -36,6 +39,7 @@ const port = Number(process.env.PORT) || 5000;
 
 connectDb()
   .then(() => {
+    scheduleDayEndReport();
     app.listen(port, () => console.log(`[server] listening on http://localhost:${port}`));
   })
   .catch((err) => {

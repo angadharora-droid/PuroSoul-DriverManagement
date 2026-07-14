@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import { formatINR, formatDateTime, formatDate } from '../utils/format.js';
+import { formatINR, formatDateTime } from '../utils/format.js';
 
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 const INK = '#0f172a';
@@ -81,11 +81,11 @@ export function receiptPdf(txn) {
 }
 
 const TABLE_COLS = [
-  { key: 'date', label: 'Date', x: 50, w: 90 },
-  { key: 'ref', label: 'Ref', x: 140, w: 65 },
-  { key: 'party', label: 'Party', x: 205, w: 130 },
-  { key: 'driver', label: 'Driver', x: 335, w: 100 },
-  { key: 'amount', label: 'Amount', x: 435, w: 110, align: 'right' },
+  { key: 'date', label: 'Date & time', x: 50, w: 115 },
+  { key: 'ref', label: 'Ref', x: 165, w: 60 },
+  { key: 'party', label: 'Party', x: 225, w: 120 },
+  { key: 'driver', label: 'Driver', x: 345, w: 95 },
+  { key: 'amount', label: 'Amount', x: 440, w: 105, align: 'right' },
 ];
 
 function tableHeader(doc, y) {
@@ -136,7 +136,7 @@ export function reportPdf(report) {
     for (const row of group.rows) {
       y = ensureSpace(doc, y);
       doc.font('Helvetica').fontSize(9).fillColor(INK);
-      doc.text(formatDate(row.date), TABLE_COLS[0].x, y, { width: TABLE_COLS[0].w });
+      doc.text(formatDateTime(row.date), TABLE_COLS[0].x, y, { width: TABLE_COLS[0].w, height: 12, ellipsis: true });
       doc.text(row.ref, TABLE_COLS[1].x, y, { width: TABLE_COLS[1].w });
       doc.text(row.party, TABLE_COLS[2].x, y, { width: TABLE_COLS[2].w, ellipsis: true, height: 12 });
       doc.text(row.driver, TABLE_COLS[3].x, y, { width: TABLE_COLS[3].w, ellipsis: true, height: 12 });

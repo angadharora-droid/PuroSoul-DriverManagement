@@ -46,4 +46,40 @@ router.get('/me', requireAuth(), (req, res) => {
   res.json({ user: req.user });
 });
 
+// Abuse guard: at most 10 password-change attempts per account per 15 minutes.
+const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  keyGenerator: (req) => `pwd:${req.user.id}`,
+  validate: false,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many attempts — please wait a few minutes' },
+});
+
+/** Self-service password change for the logged-in account (driver or admin). */
+router.post('/change-password', requireAuth('driver', 'admin'), changePasswordLimiter, async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'Current and new passwords are required' });
+  }
+  if (String(newPassword).length < 6) {
+    return res.status(400).json({ error: 'New password must be at least 6 characters' });
+  }
+  if (String(newPassword) === String(currentPassword)) {
+    return res.status(400).json({ error: 'New password must be different from the current one' });
+  }
+
+  const Model = req.user.role === 'driver' ? Driver : Admin;
+  const account = await Model.findById(req.user.id);
+  // 400 (not 401) on a wrong current password — a 401 makes the client log out.
+  if (!(await account.verifyPassword(String(currentPassword)))) {
+    return res.status(400).json({ error: 'Current password is incorrect' });
+  }
+
+  await account.setPassword(String(newPassword));
+  await account.save();
+  res.json({ ok: true });
+});
+
 export default router;
