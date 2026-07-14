@@ -25,7 +25,7 @@ Prerequisites: Node 20+, MongoDB running locally (or an Atlas URI).
 cd server
 npm install
 copy .env.example .env        # cp on macOS/Linux — then edit values
-npm run seed -- --demo        # admin + sample parties/drivers (omit --demo for admin only)
+npm run seed                  # creates the initial admin account (SEED_ADMIN_* in .env)
 npm run dev                   # http://localhost:5000
 
 # Frontend (second terminal)
@@ -34,10 +34,7 @@ npm install
 npm run dev                   # http://localhost:5173 (proxies /api to :5000)
 ```
 
-Demo logins after `--demo` seed:
-
-- **Admin:** `admin@purosoul.local` / `ChangeMe123!` (override via `SEED_ADMIN_*` in `.env`)
-- **Driver:** mobile `9999999999` / `driver123`
+Log in with the admin credentials from `SEED_ADMIN_*` in `.env` (change the password after first login), then create drivers, parties and further admins from the admin panel.
 
 With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printed to the server terminal so you can test the whole flow without a gateway. Similarly, leaving `SMTP_HOST` empty logs emails to the console instead of sending.
 
@@ -54,9 +51,10 @@ With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printe
 ## Admin panel
 
 - **Collections** — filter by date range / driver / party / status, verified totals, CSV export, per-transaction OTP audit trail (attempt/resend counts and timestamps — never the OTP itself), receipt PDF download, append-only audit notes.
-- **Reports** — Daily (grouped by driver, grand total), By Party, By Driver (with per-party breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit.
+- **Reports** — Daily (grouped by driver, grand total), By Party, By Driver (with per-party breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit. A **day-end email** with the daily report PDF (every collection with party, time, driver and amount) goes to the global notification emails automatically at `DAY_END_REPORT_TIME` (IST) — or on demand via the "Email report" button on the Daily tab.
 - **Parties** — add/edit/deactivate, registered mobile, per-party notification emails.
 - **Drivers** — add/edit/deactivate, password resets.
+- **Admins** — create additional admin accounts, edit/deactivate, password resets. You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
 
 ## Decisions on the open items
