@@ -67,19 +67,32 @@ async function sendTwilio(mobile, message) {
 
 async function sendFast2Sms(mobile, message) {
   const apiKey = requiredEnv('FAST2SMS_API_KEY');
+  const post = async (payload) => {
+    const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: { authorization: apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const body = await res.json().catch(() => ({}));
+    return { res, body };
+  };
+
   // OTP route sends only the numeric code ("{code} is your verification code")
   // but is DLT-approved on Fast2SMS's side, so it reaches DND numbers 24/7.
-  const payload =
-    message.type === 'otp'
-      ? { route: 'otp', variables_values: String(message.vars.otp), numbers: mobile }
-      : { route: 'q', message: message.text, numbers: mobile };
+  let out;
+  if (message.type === 'otp') {
+    out = await post({ route: 'otp', variables_values: String(message.vars.otp), numbers: mobile });
+    // 996 = account's OTP-route website KYC not approved yet. Fall back to the
+    // quick route so OTPs keep flowing; this stops triggering once KYC passes.
+    if (out.body.status_code === 996) {
+      console.warn('[sms] Fast2SMS OTP route not verified yet — falling back to quick route');
+      out = await post({ route: 'q', message: message.text, numbers: mobile });
+    }
+  } else {
+    out = await post({ route: 'q', message: message.text, numbers: mobile });
+  }
 
-  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-    method: 'POST',
-    headers: { authorization: apiKey, 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  const body = await res.json().catch(() => ({}));
+  const { res, body } = out;
   if (!res.ok || body.return === false) {
     throw new Error(`Fast2SMS send failed: ${(body.message && String(body.message)) || res.status}`);
   }
