@@ -1,0 +1,124 @@
+/* Puro Soul brand typography: Playfair Display (display serif) + Poppins (UI sans) */
+@import "@fontsource/poppins/400.css";
+@import "@fontsource/poppins/500.css";
+@import "@fontsource/poppins/600.css";
+@import "@fontsource/poppins/700.css";
+@import "@fontsource-variable/playfair-display";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Playfair Display Variable", Georgia, serif;
+
+  /* Puro Soul water blues — anchored on the brand's #185997 / #016199 */
+  --color-brand-50: #eff6fc;
+  --color-brand-100: #dcebf7;
+  --color-brand-200: #bcd8ef;
+  --color-brand-300: #8fbde2;
+  --color-brand-400: #5b9cd1;
+  --color-brand-500: #3680bc;
+  --color-brand-600: #2368a5;
+  --color-brand-700: #185997;
+  --color-brand-800: #16497c;
+  --color-brand-900: #123a62;
+
+  /* Warm ivory canvas from the brand site (#f5f3ef) */
+  --color-canvas: #f5f3ef;
+
+  --shadow-card: 0 1px 2px 0 rgb(18 58 98 / 0.05), 0 1px 3px 0 rgb(18 58 98 / 0.07);
+  --shadow-pop: 0 10px 30px -6px rgb(18 58 98 / 0.16), 0 4px 10px -4px rgb(18 58 98 / 0.09);
+
+  --animate-fade-in-up: fade-in-up 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-scale-in: scale-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-toast-in: toast-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-pop: pop 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-shimmer: shimmer 1.4s linear infinite;
+  --animate-draw: draw 0.5s ease-out 0.15s both;
+}
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.97); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes pop {
+  0% { opacity: 0; transform: scale(0.5); }
+  60% { transform: scale(1.08); }
+  100% { opacity: 1; transform: scale(1); }
+}
+@keyframes shimmer {
+  from { background-position: 200% 0; }
+  to { background-position: -200% 0; }
+}
+@keyframes draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-canvas text-slate-900 antialiased;
+}
+
+/* Money and data columns never jitter as digits change */
+.tnum {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Consistent, visible keyboard focus everywhere */
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Text fields already show their own border + ring on focus — avoid a double ring */
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+}
+
+button, a, select, input[type="date"], input[type="checkbox"] {
+  touch-action: manipulation;
+}
+
+/* Hide scrollbars on horizontal nav strips (content still scrolls) */
+@utility scrollbar-none {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* react-select draws its own focus ring on the control */
+#party-select:focus-visible {
+  outline: none;
+}
+
+/* Skeleton shimmer surface */
+.skeleton {
+  @apply animate-shimmer rounded-lg bg-slate-200/80;
+  background-image: linear-gradient(90deg, transparent 25%, rgb(255 255 255 / 0.6) 50%, transparent 75%);
+  background-size: 200% 100%;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html { scroll-behavior: auto; }
+}
