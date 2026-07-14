@@ -1,5 +1,9 @@
 const TOKEN_KEY = 'purosoul_auth';
 
+// Same-origin by default; set VITE_API_URL at build time when the API is
+// hosted on a different domain (e.g. Vercel frontend + separate backend).
+const API_BASE = import.meta.env.VITE_API_URL || window.location.origin;
+
 export function getAuth() {
   try {
     return JSON.parse(localStorage.getItem(TOKEN_KEY)) || null;
@@ -22,7 +26,7 @@ export class ApiError extends Error {
 }
 
 async function request(path, { method = 'GET', body, params } = {}) {
-  const url = new URL(path, window.location.origin);
+  const url = new URL(path, API_BASE);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
@@ -58,7 +62,7 @@ export const api = {
 
 /** Authenticated file download (CSV/PDF) via blob — keeps the JWT in the header. */
 export async function apiDownload(path, params, fallbackName) {
-  const url = new URL(path, window.location.origin);
+  const url = new URL(path, API_BASE);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
       if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
