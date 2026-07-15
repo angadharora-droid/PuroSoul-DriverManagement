@@ -31,4 +31,5 @@ export const STATUS_LABELS = {
   verified: 'Verified',
   expired: 'Expired',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };

@@ -88,18 +88,18 @@ const TABLE_COLS = [
   { key: 'amount', label: 'Amount', x: 440, w: 105, align: 'right' },
 ];
 
-function tableHeader(doc, y) {
+function tableHeader(doc, y, cols = TABLE_COLS) {
   doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED);
-  for (const col of TABLE_COLS) doc.text(col.label.toUpperCase(), col.x, y, { width: col.w, align: col.align || 'left' });
+  for (const col of cols) doc.text(col.label.toUpperCase(), col.x, y, { width: col.w, align: col.align || 'left' });
   doc.moveTo(50, y + 14).lineTo(545, y + 14).strokeColor(LINE).stroke();
   return y + 20;
 }
 
-function ensureSpace(doc, y, needed = 60) {
+function ensureSpace(doc, y, needed = 60, cols = TABLE_COLS) {
   if (y > 780 - needed) {
     footer(doc);
     doc.addPage();
-    return tableHeader(doc, 60);
+    return tableHeader(doc, 60, cols);
   }
   return y;
 }
@@ -112,19 +112,22 @@ export function reportPdf(report) {
   const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
   header(doc, report.title, report.subtitle);
 
+  // Column labels may be overridden per report type (e.g. handovers: party → "Received by").
+  const cols = TABLE_COLS.map((c) => ({ ...c, label: report.colLabels?.[c.key] || c.label }));
+
   // Summary band
   let y = doc.y + 4;
   doc.roundedRect(50, y, 495, 46, 6).fillAndStroke('#f8fafc', LINE);
-  doc.fillColor(MUTED).font('Helvetica').fontSize(8).text('TOTAL VERIFIED COLLECTIONS', 70, y + 9);
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(report.totalLabel || 'TOTAL VERIFIED COLLECTIONS', 70, y + 9);
   doc.fillColor(ACCENT).font('Helvetica-Bold').fontSize(16).text(formatINR(report.grandTotal), 70, y + 20);
-  doc.fillColor(MUTED).font('Helvetica').fontSize(8).text('TRANSACTIONS', 400, y + 9);
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(report.countLabel || 'TRANSACTIONS', 400, y + 9);
   doc.fillColor(INK).font('Helvetica-Bold').fontSize(16).text(String(report.grandCount), 400, y + 20);
   y += 62;
 
-  y = tableHeader(doc, y);
+  y = tableHeader(doc, y, cols);
 
   for (const group of report.groups) {
-    y = ensureSpace(doc, y, 80);
+    y = ensureSpace(doc, y, 80, cols);
     if (report.groups.length > 1 || group.label !== 'All transactions') {
       doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text(group.label, 50, y);
       y = doc.y + 4;
@@ -134,7 +137,7 @@ export function reportPdf(report) {
       }
     }
     for (const row of group.rows) {
-      y = ensureSpace(doc, y);
+      y = ensureSpace(doc, y, 60, cols);
       doc.font('Helvetica').fontSize(9).fillColor(INK);
       doc.text(formatDateTime(row.date), TABLE_COLS[0].x, y, { width: TABLE_COLS[0].w, height: 12, ellipsis: true });
       doc.text(row.ref, TABLE_COLS[1].x, y, { width: TABLE_COLS[1].w });
@@ -144,7 +147,7 @@ export function reportPdf(report) {
       y += 16;
     }
     // Group subtotal
-    y = ensureSpace(doc, y);
+    y = ensureSpace(doc, y, 60, cols);
     doc.moveTo(300, y).lineTo(545, y).strokeColor(LINE).stroke();
     y += 5;
     doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
@@ -153,7 +156,7 @@ export function reportPdf(report) {
     y += 24;
   }
 
-  y = ensureSpace(doc, y, 40);
+  y = ensureSpace(doc, y, 40, cols);
   doc.moveTo(50, y).lineTo(545, y).strokeColor(INK).stroke();
   y += 8;
   doc.font('Helvetica-Bold').fontSize(11).fillColor(ACCENT);

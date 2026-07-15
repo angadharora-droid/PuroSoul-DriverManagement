@@ -12,6 +12,16 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email address'],
     },
+    // Optional — required only to receive cash handover OTPs from drivers.
+    mobile: {
+      type: String,
+      trim: true,
+      default: '',
+      validate: {
+        validator: (v) => !v || /^\d{10}$/.test(v),
+        message: 'Admin mobile must be a 10-digit number',
+      },
+    },
     passwordHash: { type: String, required: true },
     isActive: { type: Boolean, default: true },
   },

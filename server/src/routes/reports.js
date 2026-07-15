@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { buildReport } from '../services/report.js';
+import { buildReport, buildHandoverReport } from '../services/report.js';
 import { sendDayEndReport } from '../services/dayend.js';
 import { reportPdf } from '../services/pdf.js';
 import { toCsv } from '../utils/csv.js';
@@ -9,7 +9,7 @@ import { formatDateTime } from '../utils/format.js';
 const router = Router();
 
 router.get('/', requireAuth('admin'), async (req, res) => {
-  const report = await buildReport(req.query);
+  const report = req.query.type === 'handover' ? await buildHandoverReport(req.query) : await buildReport(req.query);
   const format = req.query.format || 'json';
 
   if (format === 'json') return res.json({ report });
@@ -29,7 +29,8 @@ router.get('/', requireAuth('admin'), async (req, res) => {
       rows.push([`${g.label} — subtotal (${g.count} txns)`, '', '', '', '', g.subtotal.toFixed(2)]);
     }
     rows.push(['GRAND TOTAL', '', '', '', '', report.grandTotal.toFixed(2)]);
-    const csv = toCsv(['Group', 'Date', 'Ref', 'Party', 'Driver', 'Amount (INR)'], rows);
+    const partyLabel = report.colLabels?.party || 'Party';
+    const csv = toCsv(['Group', 'Date', 'Ref', partyLabel, 'Driver', 'Amount (INR)'], rows);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${report.type}-report-${stamp}.csv"`);
     return res.send(csv);
