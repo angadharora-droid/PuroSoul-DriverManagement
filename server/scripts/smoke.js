@@ -12,6 +12,7 @@ const modules = [
   '../src/models/Driver.js',
   '../src/models/Admin.js',
   '../src/models/Transaction.js',
+  '../src/models/Handover.js',
   '../src/models/Setting.js',
   '../src/utils/otp.js',
   '../src/utils/format.js',
@@ -27,6 +28,7 @@ const modules = [
   '../src/routes/drivers.js',
   '../src/routes/admins.js',
   '../src/routes/collections.js',
+  '../src/routes/handovers.js',
   '../src/routes/reports.js',
   '../src/routes/settings.js',
 ];
@@ -66,5 +68,26 @@ const report = await reportPdf({
   grandCount: 1,
 });
 console.log(`ok  report PDF rendered (${report.length} bytes)`);
+
+// Handover report uses the same template with relabelled columns
+const handoverReport = await reportPdf({
+  title: 'Cash Handover Report',
+  subtitle: 'Period: test • Verified handovers only',
+  groups: [
+    {
+      label: 'Test Driver',
+      breakdown: 'Test Admin: Rs. 12,345.50',
+      rows: [{ date: new Date(), ref: 'TESTREF2', party: 'Test Admin', driver: 'Test Driver', amount: 12345.5 }],
+      subtotal: 12345.5,
+      count: 1,
+    },
+  ],
+  grandTotal: 12345.5,
+  grandCount: 1,
+  colLabels: { party: 'Received by' },
+  totalLabel: 'TOTAL CASH HANDED OVER',
+  countLabel: 'HANDOVERS',
+});
+console.log(`ok  handover report PDF rendered (${handoverReport.length} bytes)`);
 console.log('smoke test passed');
 process.exit(0);

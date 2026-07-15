@@ -48,13 +48,22 @@ With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printe
    - Email with the **PDF receipt attached** goes to the party's `notifyEmails` ∪ the global list from Settings.
    - Confirmation SMS goes to the party ("Collection of Rs. X received by [driver] on [date] is confirmed. Ref …").
 
+## The handover flow
+
+After collecting, the driver deposits the cash with an admin (manager/cashier) — verified by the same OTP pattern, but in reverse:
+
+1. Driver → **Handover** tab. The app lists every verified collection still in the driver's hands (not yet part of a handover), with a running total.
+2. Driver ticks the collections being handed over, selects the recipient (any active admin with a mobile number on file — set it on the **Admins** page), and taps **Send OTP to recipient**.
+3. The OTP goes to the **recipient's** mobile. The recipient counts the cash and tells the driver the code; the driver enters it. Same limits as collections (5-min expiry, 3 attempts, 3 resends, rate-limited).
+4. On success the handover is `verified` and **immutable**, each included collection is linked to it (so it can never be handed over twice), and the record appears in the **Reports → Handovers** tab. A pending handover can be cancelled by the driver, which releases its collections immediately.
+
 ## Admin panel
 
 - **Collections** — filter by date range / driver / party / status, verified totals, CSV export, per-transaction OTP audit trail (attempt/resend counts and timestamps — never the OTP itself), receipt PDF download, append-only audit notes.
-- **Reports** — Daily (grouped by driver, grand total), By Party, By Driver (with per-party breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit. A **day-end email** with the daily report PDF (every collection with party, time, driver and amount) goes to the global notification emails automatically at `DAY_END_REPORT_TIME` (IST) — or on demand via the "Email report" button on the Daily tab.
+- **Reports** — Daily (grouped by driver, grand total), By Party, By Driver (with per-party breakdown), Handovers (grouped by driver with per-recipient breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit. A **day-end email** with the daily report PDF (every collection with party, time, driver and amount) goes to the global notification emails automatically at `DAY_END_REPORT_TIME` (IST) — or on demand via the "Email report" button on the Daily tab.
 - **Parties** — add/edit/deactivate, registered mobile, per-party notification emails.
 - **Drivers** — add/edit/deactivate, password resets.
-- **Admins** — create additional admin accounts, edit/deactivate, password resets. You cannot deactivate your own account or the last active admin.
+- **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional mobile number (required for that admin to receive cash handover OTPs). You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
 
 ## Decisions on the open items

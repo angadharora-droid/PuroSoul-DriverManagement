@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Transaction from '../models/Transaction.js';
+import Handover from '../models/Handover.js';
 import { dayRange, dateRange, formatINR, formatDate } from '../utils/format.js';
 
 export function todayIST() {
@@ -99,5 +100,78 @@ export async function buildReport(query) {
     grandTotal: txns.reduce((s, t) => s + t.amount, 0),
     grandCount: txns.length,
     statusCounts,
+  };
+}
+
+/**
+ * Cash handover report in the same uniform shape as buildReport, so the JSON
+ * view, CSV and PDF exports all work unchanged. Rows are grouped by driver;
+ * the "party" column carries the recipient (relabelled via colLabels).
+ */
+export async function buildHandoverReport(query) {
+  const match = {};
+  const { start, end } = dateRange(query.from, query.to);
+  if (start || end) match.createdAt = { ...(start && { $gte: start }), ...(end && { $lt: end }) };
+  const periodLabel =
+    query.from || query.to
+      ? `${query.from ? formatDate(dateRange(query.from).start) : 'beginning'} to ${query.to ? formatDate(new Date(dateRange(undefined, query.to).end - 1)) : 'today'}`
+      : 'All time';
+
+  if (query.driverId && mongoose.isValidObjectId(query.driverId)) match.driver = new mongoose.Types.ObjectId(query.driverId);
+
+  const [handovers, statusAgg] = await Promise.all([
+    Handover.find({ ...match, status: 'verified' })
+      .sort({ createdAt: 1 })
+      .limit(10000)
+      .select('recipientName totalAmount verifiedAt createdAt driver') // skip otpCodeHash + transactions arrays
+      .populate('driver', 'name'),
+    Handover.aggregate([{ $match: match }, { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: '$totalAmount' } } }]),
+  ]);
+
+  const statusCounts = Object.fromEntries(statusAgg.map((s) => [s._id, { count: s.count, amount: s.amount }]));
+
+  const groupsMap = new Map();
+  for (const h of handovers) {
+    const key = h.driver?.name || '—';
+    if (!groupsMap.has(key)) groupsMap.set(key, []);
+    groupsMap.get(key).push(h);
+  }
+
+  const groups = [...groupsMap.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([label, list]) => {
+      // Per-recipient breakdown inside each driver group.
+      const byRecipient = new Map();
+      for (const h of list) {
+        byRecipient.set(h.recipientName, (byRecipient.get(h.recipientName) || 0) + h.totalAmount);
+      }
+      return {
+        label,
+        rows: list.map((h) => ({
+          id: h._id,
+          date: h.createdAt, // matches the period filter (and buildReport's convention)
+          ref: h.ref,
+          party: h.recipientName,
+          driver: h.driver?.name || '—',
+          amount: h.totalAmount,
+        })),
+        subtotal: list.reduce((s, h) => s + h.totalAmount, 0),
+        count: list.length,
+        breakdown: [...byRecipient.entries()].map(([r, amt]) => `${r}: ${formatINR(amt)}`).join('  •  '),
+      };
+    });
+
+  return {
+    type: 'handover',
+    title: 'Cash Handover Report',
+    subtitle: `Period: ${periodLabel} • Verified handovers only`,
+    periodLabel,
+    groups,
+    grandTotal: handovers.reduce((s, h) => s + h.totalAmount, 0),
+    grandCount: handovers.length,
+    statusCounts,
+    colLabels: { party: 'Received by' },
+    totalLabel: 'TOTAL CASH HANDED OVER',
+    countLabel: 'HANDOVERS',
   };
 }

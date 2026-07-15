@@ -124,6 +124,7 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
     return res.status(429).json({ error: `Please wait ${wait}s before resending`, retryAfterSeconds: wait });
   }
 
+  const prevLastOtpSentAt = txn.lastOtpSentAt;
   const code = generateOtp();
   txn.otpCodeHash = await hashOtp(code);
   txn.otpExpiresAt = otpExpiry();
@@ -136,6 +137,10 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
   try {
     await sendSms(txn.party.mobile, otpMessage(code, txn.amount));
   } catch (err) {
+    // A failed send must not cost the driver a resend or restart the cooldown.
+    txn.otpResendCount -= 1;
+    txn.lastOtpSentAt = prevLastOtpSentAt;
+    await txn.save().catch(() => {});
     console.error('[otp] resend SMS failed:', err.message);
     return res.status(502).json({ error: 'Could not send OTP SMS — please try again' });
   }

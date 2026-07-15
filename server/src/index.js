@@ -7,6 +7,7 @@ import partyRoutes from './routes/parties.js';
 import driverRoutes from './routes/drivers.js';
 import adminRoutes from './routes/admins.js';
 import collectionRoutes from './routes/collections.js';
+import handoverRoutes from './routes/handovers.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
 import { errorHandler, notFound } from './middleware/error.js';
@@ -29,6 +30,7 @@ app.use('/api/parties', partyRoutes);
 app.use('/api/drivers', driverRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/collections', collectionRoutes);
+app.use('/api/handovers', handoverRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 

@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import NewCollection from './pages/driver/NewCollection';
+import Handover from './pages/driver/Handover';
 import History from './pages/driver/History';
 import Collections from './pages/admin/Collections';
 import Parties from './pages/admin/Parties';
@@ -20,6 +21,7 @@ function RequireRole({ role, children }) {
 
 const driverLinks = [
   { to: '/', label: 'New collection', icon: 'banknotes', end: true },
+  { to: '/handover', label: 'Handover', icon: 'arrows-right-left' },
   { to: '/history', label: 'My history', icon: 'clock' },
 ];
 
@@ -47,6 +49,7 @@ export default function App() {
         }
       >
         <Route path="/" element={<NewCollection />} />
+        <Route path="/handover" element={<Handover />} />
         <Route path="/history" element={<History />} />
       </Route>
 

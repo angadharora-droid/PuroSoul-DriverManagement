@@ -12,6 +12,7 @@ const MUTABLE_AFTER_VERIFY = new Set([
   'smsConfirmationSent',
   'notifyError',
   'auditNotes',
+  'handover',
   'updatedAt',
 ]);
 
@@ -38,6 +39,9 @@ const transactionSchema = new mongoose.Schema(
     notificationEmailsSent: { type: [String], default: [] },
     smsConfirmationSent: { type: Boolean, default: false },
     notifyError: { type: String, default: '' },
+
+    // Set once the cash reaches an admin via an OTP-verified handover.
+    handover: { type: mongoose.Schema.Types.ObjectId, ref: 'Handover', default: null, index: true },
 
     auditNotes: [
       {
@@ -72,9 +76,17 @@ transactionSchema.index({ party: 1, createdAt: -1 });
 
 transactionSchema.post('init', function () {
   this._wasVerified = this.status === 'verified';
+  this._origHandover = this.handover;
 });
 
 transactionSchema.pre('save', function (next) {
+  // handover is set-once: null → id (via the sanctioned atomic claim or a save),
+  // never re-pointed or cleared. Guards the audit link between cash and handover.
+  if (!this.isNew && this.isModified('handover') && this._origHandover != null) {
+    if (!this.handover || !this._origHandover.equals(this.handover)) {
+      return next(new Error('handover is set once and cannot be changed or cleared'));
+    }
+  }
   if (!this.isNew && this._wasVerified) {
     const illegal = this.modifiedPaths().filter(
       (p) => !MUTABLE_AFTER_VERIFY.has(p.split('.')[0])
@@ -84,6 +96,12 @@ transactionSchema.pre('save', function (next) {
     }
   }
   next();
+});
+
+// Keep the snapshots true for documents saved more than once in-process.
+transactionSchema.post('save', function () {
+  this._wasVerified = this.status === 'verified';
+  this._origHandover = this.handover;
 });
 
 // Belt-and-braces: block query-level updates/deletes that would touch verified records.

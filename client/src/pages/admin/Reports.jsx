@@ -9,6 +9,7 @@ const TABS = [
   { value: 'daily', label: 'Daily', icon: 'calendar' },
   { value: 'party', label: 'By party', icon: 'storefront' },
   { value: 'driver', label: 'By driver', icon: 'truck' },
+  { value: 'handover', label: 'Handovers', icon: 'arrows-right-left' },
   { value: 'custom', label: 'Custom range', icon: 'adjustments' },
 ];
 
@@ -36,7 +37,7 @@ export default function Reports() {
     () => ({
       type: tab,
       ...(tab === 'daily' ? { date } : { from, to }),
-      ...(tab !== 'daily' && partyId ? { partyId } : {}),
+      ...(tab !== 'daily' && tab !== 'handover' && partyId ? { partyId } : {}),
       ...(tab !== 'daily' && driverId ? { driverId } : {}),
     }),
     [tab, date, from, to, partyId, driverId]
@@ -73,7 +74,14 @@ export default function Reports() {
 
   return (
     <div className="space-y-4">
-      <PageHeader title="Reports" subtitle="Verified collections only — pending, expired and failed records are listed separately for audit" />
+      <PageHeader
+        title="Reports"
+        subtitle={
+          tab === 'handover'
+            ? 'OTP-verified cash handovers from drivers — other statuses are listed separately for audit'
+            : 'Verified collections only — pending, expired and failed records are listed separately for audit'
+        }
+      />
 
       <SegmentedControl options={TABS} value={tab} onChange={setTab} className="w-fit max-w-full" />
 
@@ -105,7 +113,7 @@ export default function Reports() {
                 </select>
               </label>
             )}
-            {(tab === 'driver' || tab === 'custom') && (
+            {(tab === 'driver' || tab === 'custom' || tab === 'handover') && (
               <label className="block">
                 <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Driver</span>
                 <select className={`${inputClass} w-auto`} value={driverId} onChange={(e) => setDriverId(e.target.value)}>
@@ -144,8 +152,8 @@ export default function Reports() {
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <StatCard label="Total verified" value={formatINR(report.grandTotal)} icon="banknotes" accent />
-            <StatCard label="Transactions" value={report.grandCount} icon="check-circle" />
+            <StatCard label={tab === 'handover' ? 'Total handed over' : 'Total verified'} value={formatINR(report.grandTotal)} icon="banknotes" accent />
+            <StatCard label={tab === 'handover' ? 'Handovers' : 'Transactions'} value={report.grandCount} icon="check-circle" />
             <StatCard label="Not verified (audit)" value={otherStatuses.reduce((s, [, v]) => s + v.count, 0)} icon="warning" />
           </div>
 
@@ -157,7 +165,11 @@ export default function Reports() {
           )}
 
           {report.groups.length === 0 && (
-            <EmptyState icon="chart-bar" title="No verified collections in this period" subtitle="Adjust the date range or filters above." />
+            <EmptyState
+              icon="chart-bar"
+              title={tab === 'handover' ? 'No verified handovers in this period' : 'No verified collections in this period'}
+              subtitle="Adjust the date range or filters above."
+            />
           )}
 
           <div className="space-y-4">

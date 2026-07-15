@@ -53,6 +53,7 @@ const STATUS_STYLES = {
   pending_otp: { chip: 'bg-amber-100 text-amber-800', icon: 'clock' },
   expired: { chip: 'bg-slate-200 text-slate-600', icon: 'clock' },
   failed: { chip: 'bg-red-100 text-red-700', icon: 'warning' },
+  cancelled: { chip: 'bg-slate-200 text-slate-600', icon: 'close' },
 };
 
 export function StatusBadge({ status }) {

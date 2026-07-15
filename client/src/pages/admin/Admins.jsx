@@ -26,15 +26,16 @@ export default function Admins() {
       {error && <Alert>{error}</Alert>}
 
       {!admins ? (
-        <TableSkeleton rows={3} cols={4} />
+        <TableSkeleton rows={3} cols={5} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Email (login)</th>
+                  <th className="px-4 py-3 font-semibold">Mobile (handover OTP)</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -49,6 +50,7 @@ export default function Admins() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-slate-600">{a.email}</td>
+                    <td className="px-4 py-3 text-xs text-slate-600">{a.mobile || <span className="text-slate-400">—</span>}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex items-center gap-1 rounded-full py-0.5 pl-1.5 pr-2.5 text-xs font-semibold ${
@@ -85,7 +87,7 @@ function AdminModal({ admin, onClose, onSaved }) {
   const { user } = useAuth();
   const isNew = admin === 'new';
   const isSelf = !isNew && admin && admin._id === user?.id;
-  const [form, setForm] = useState({ name: '', email: '', password: '', isActive: true });
+  const [form, setForm] = useState({ name: '', email: '', mobile: '', password: '', isActive: true });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -94,8 +96,8 @@ function AdminModal({ admin, onClose, onSaved }) {
     setError('');
     setForm(
       isNew
-        ? { name: '', email: '', password: '', isActive: true }
-        : { name: admin.name, email: admin.email, password: '', isActive: admin.isActive }
+        ? { name: '', email: '', mobile: '', password: '', isActive: true }
+        : { name: admin.name, email: admin.email, mobile: admin.mobile || '', password: '', isActive: admin.isActive }
     );
   }, [admin, isNew]);
 
@@ -105,7 +107,7 @@ function AdminModal({ admin, onClose, onSaved }) {
     e.preventDefault();
     setBusy(true);
     setError('');
-    const payload = { name: form.name.trim(), email: form.email.trim(), isActive: form.isActive };
+    const payload = { name: form.name.trim(), email: form.email.trim(), mobile: form.mobile.trim(), isActive: form.isActive };
     if (form.password) payload.password = form.password;
     try {
       if (isNew) await api.post('/api/admins', payload);
@@ -132,6 +134,18 @@ function AdminModal({ admin, onClose, onSaved }) {
             value={form.email}
             onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
             required
+          />
+        </Field>
+        <Field label="Mobile (optional)" hint="10-digit number — needed to receive cash handover OTPs from drivers">
+          <Input
+            type="tel"
+            inputMode="numeric"
+            autoComplete="off"
+            maxLength={10}
+            pattern="\d{10}"
+            placeholder="9876543210"
+            value={form.mobile}
+            onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
           />
         </Field>
         <Field label={isNew ? 'Password' : 'Reset password (leave blank to keep current)'} required={isNew} hint="Minimum 6 characters">

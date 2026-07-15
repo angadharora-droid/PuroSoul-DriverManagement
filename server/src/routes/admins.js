@@ -10,11 +10,11 @@ router.get('/', requireAuth('admin'), async (req, res) => {
 });
 
 router.post('/', requireAuth('admin'), async (req, res) => {
-  const { name, email, password } = req.body || {};
+  const { name, email, mobile, password } = req.body || {};
   if (!password || String(password).length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
-  const admin = new Admin({ name, email });
+  const admin = new Admin({ name, email, mobile: mobile ? String(mobile).trim() : '' });
   await admin.setPassword(String(password));
   await admin.save();
   res.status(201).json({ admin });
@@ -24,9 +24,10 @@ router.put('/:id', requireAuth('admin'), async (req, res) => {
   const admin = await Admin.findById(req.params.id);
   if (!admin) return res.status(404).json({ error: 'Admin not found' });
 
-  const { name, email, isActive, password } = req.body || {};
+  const { name, email, mobile, isActive, password } = req.body || {};
   if (name !== undefined) admin.name = name;
   if (email !== undefined) admin.email = email;
+  if (mobile !== undefined) admin.mobile = String(mobile).trim();
   if (isActive !== undefined) {
     const active = Boolean(isActive);
     if (!active && admin._id.toString() === req.user.id) {
