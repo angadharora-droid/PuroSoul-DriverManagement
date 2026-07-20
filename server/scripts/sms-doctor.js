@@ -1,8 +1,10 @@
 /**
  * Fast2SMS diagnostics — answers "why was I charged but no SMS arrived?".
  *
- *   npm run sms-doctor                 # config + wallet only, sends nothing
- *   npm run sms-doctor -- 9876543210   # also sends a real test OTP (costs credits)
+ *   npm run sms-doctor                        # config + wallet only, sends nothing
+ *   npm run sms-doctor -- 9876543210          # also sends a real test OTP (costs credits)
+ *   npm run sms-doctor -- 9876543210 STPL     # ...overriding the sender id, to test
+ *                                             # which header the template is chained to
  *
  * Prints the raw gateway response for every call. The app swallows these behind
  * sendSms(), so this is the only place the actual status_code shows up.
@@ -28,7 +30,10 @@ async function main() {
   // --- 1. Which route will the app actually take? ---------------------------
   head('Config');
 
-  const senderId = process.env.FAST2SMS_DLT_SENDER_ID;
+  // A second arg overrides the header for this run only, so alternate sender ids
+  // can be tried without editing .env between attempts.
+  const senderOverride = (process.argv[3] || '').trim();
+  const senderId = senderOverride || process.env.FAST2SMS_DLT_SENDER_ID;
   const dltIds = {
     'collection-otp': process.env.FAST2SMS_DLT_COLLECTION_OTP_ID,
     'handover-otp': process.env.FAST2SMS_DLT_HANDOVER_OTP_ID,
@@ -37,7 +42,10 @@ async function main() {
 
   line(`SMS_PROVIDER            ${process.env.SMS_PROVIDER || '(unset → console)'}`);
   line(`FAST2SMS_API_KEY        set (${API_KEY.length} chars)`);
-  line(`FAST2SMS_DLT_SENDER_ID  ${senderId || 'MISSING'}`);
+  line(
+    `FAST2SMS_DLT_SENDER_ID  ${senderId || 'MISSING'}` +
+      (senderOverride ? `  (overridden for this run; .env has ${process.env.FAST2SMS_DLT_SENDER_ID || 'nothing'})` : '')
+  );
   for (const [name, id] of Object.entries(dltIds)) {
     line(`  ${name.padEnd(20)} ${id || 'MISSING'}`);
   }
