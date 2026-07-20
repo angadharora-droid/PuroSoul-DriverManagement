@@ -105,23 +105,21 @@ async function main() {
     return 1;
   }
 
-  // Submission success != delivery. This is the part the app never checks.
-  head(`Delivery report (request_id ${requestId})`);
-  line('Submission accepted. Polling actual delivery status...\n');
-
-  for (let i = 1; i <= 4; i++) {
-    await new Promise((r) => setTimeout(r, 8000));
-    const report = await getJson(
-      `https://www.fast2sms.com/dev/delivery-report?authorization=${API_KEY}&request_id=${requestId}`
-    );
-    line(`poll ${i} (${i * 8}s)  ${JSON.stringify(report)}`);
-  }
-
-  line('\nRead the status field above:');
-  line('  DELIVRD          delivered — the gateway is fine, look elsewhere');
-  line('  DND / BLOCKED    DND rejection — you paid, operator dropped it. Fix: use route "dlt"');
-  line('  FAILED / EXPIRED operator rejected; on "dlt" this usually means the message');
-  line('                   text or variable count does not match the approved template');
+  // Submission success != delivery. Fast2SMS's dev API has no delivery-report
+  // endpoint (only bulkV2 and wallet), so the operator-side status has to be
+  // read from the dashboard.
+  head(`Accepted — request_id ${requestId}`);
+  line('This only means Fast2SMS queued it. The operator can still drop it.');
+  line('');
+  line('Check the real status at:  https://www.fast2sms.com/dashboard/sms/reports');
+  line(`Find request id ${requestId} and read its status:`);
+  line('');
+  line('  DELIVRD          delivered — gateway is fine, look elsewhere');
+  line('  FAILED / BLOCKED operator rejected. On the DLT route the usual causes are:');
+  line('                   (a) sender_id is not the header the template is registered');
+  line('                       against — they must be the same pair on the DLT portal');
+  line('                   (b) variable count differs from the approved template');
+  line('                   (c) template approved <1-2h ago, not yet synced to operators');
   return 0;
 }
 
