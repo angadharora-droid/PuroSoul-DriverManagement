@@ -21,6 +21,9 @@ import {
 
 const router = Router();
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
+// DLT requires the registered entity/brand name in the SMS body — keep this
+// identical to the brand phrase in the approved templates and on the portal.
+const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
 const MAX_HANDOVER_TXNS = 200;
 
 // Abuse guard: at most 10 OTP sends (new + resend) per driver per 15 minutes.
@@ -41,7 +44,7 @@ function otpMessage(code, amount, driverName, count) {
   return {
     type: 'otp',
     template: 'handover-otp',
-    text: `${COMPANY}: ${code} is the OTP to confirm you are RECEIVING ${formatINR(amount)} cash (${countLabel}) from driver ${driverName}. Share it ONLY with the driver handing over. Valid ${ttl} min.`,
+    text: `${code} is your OTP for confirming receipt of ${formatINR(amount)} cash (${countLabel}) from driver ${driverName} for ${SMS_BRAND}. Share this OTP only with the driver handing over. Valid for ${ttl} minutes.`,
     vars: { otp: code, amount: formatINR(amount) },
     // {#var#} fill order of the registered DLT template — keep in sync with the
     // portal. "Rs." stays in the template's static text; the amount keeps its

@@ -5,6 +5,9 @@ import { getGlobalSettings } from '../models/Setting.js';
 import { formatINR, formatDateTime } from '../utils/format.js';
 
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
+// DLT requires the registered entity/brand name in the SMS body — keep this
+// identical to the brand phrase in the approved templates and on the portal.
+const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
 
 /**
  * Fired after a transaction is verified. Sends the stakeholder email (with PDF
@@ -44,7 +47,7 @@ export async function notifyVerified(txn) {
     await sendSms(txn.party.mobile, {
       type: 'confirmation',
       template: 'confirmation',
-      text: `${COMPANY}: Collection of ${formatINR(txn.amount)} received by ${txn.driver.name} on ${dateStr} is confirmed. Ref ${txn.ref}.`,
+      text: `Cash collection of ${formatINR(txn.amount)} by ${txn.driver.name} on ${dateStr} is confirmed for ${SMS_BRAND}. Ref ${txn.ref}.`,
       vars: { amount: formatINR(txn.amount), driver: txn.driver.name, date: dateStr, ref: txn.ref },
       // {#var#} fill order of the registered DLT template — keep in sync with the
       // portal. "Rs." stays in the template's static text; the amount keeps its
