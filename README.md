@@ -70,24 +70,24 @@ After collecting, the collector deposits the cash with an admin (manager/cashier
 
 Once your header (sender ID) is approved on the DLT portal, register these three content templates against it (category **Service – Implicit**; tick the "contains OTP" option for the two OTP templates where the portal asks). The static text must stay exactly as below — the app sends these messages word-for-word with the `{#var#}` parts filled in.
 
-> **Brand name:** DLT requires the registered entity/brand name in the body. The OTP messages lead with the code (best for notification preview and auto-read) and name the brand right after. This phrase — `Puro Soul, a unit of Centre Point Hospitality` — must match your registered brand name exactly (same spelling, casing and punctuation, including the comma); the app reads it from `SMS_BRAND_NAME` in `.env` and it must equal the brand phrase in the approved templates.
+> **Brand name:** DLT requires the registered entity/brand name in the body. The OTP messages lead with the code (best for notification preview and auto-read) and name the brand right after. This phrase — `Puro Soul - Hotel Centre Point` — must match your registered brand name exactly (same spelling, casing, spacing and punctuation); the app reads it from `SMS_BRAND_NAME` in `.env` and it must equal the brand phrase in the approved templates. A single character of drift makes the operator reject the send with `HASH/CHAIN NOT MATCH`.
 
 **1. Collection OTP** — variables in order: OTP code (NUMBER, e.g. `4829`), amount (TEXT — the value has `,` and `.`, so NUMBER is rejected; e.g. `5,000.00`), validity minutes (NUMBER, e.g. `5`)
 
 ```
-{#var#} is your OTP for confirming cash collection of Rs. {#var#} for Puro Soul, a unit of Centre Point Hospitality. Share this OTP only with the delivery collector present with you. Valid for {#var#} minutes.
+{#var#} is your OTP for confirming cash collection of Rs. {#var#} for Puro Soul - Hotel Centre Point. Share this OTP only with the collector present with you. Valid for {#var#} minutes.
 ```
 
 **2. Handover OTP** — variables in order: OTP code (NUMBER, `4829`), amount (TEXT, `12,500.00`), collection count (TEXT, `3 collections`), collector name (TEXT, `Ramesh Kumar`), validity minutes (NUMBER, `5`)
 
 ```
-{#var#} is your OTP for confirming receipt of Rs. {#var#} cash ({#var#}) from collector {#var#} for Puro Soul, a unit of Centre Point Hospitality. Share this OTP only with the collector handing over. Valid for {#var#} minutes.
+{#var#} is your OTP for confirming receipt of Rs. {#var#} cash ({#var#}) from collector {#var#} for Puro Soul - Hotel Centre Point. Share this OTP only with the collector handing over. Valid for {#var#} minutes.
 ```
 
 **3. Collection confirmation** — variables in order: amount (TEXT, `5,000.00`), collector name (TEXT, `Ramesh Kumar`), date-time (TEXT/DATE, `15 Jul 2026, 09:30 pm`), reference (ALPHANUMERIC, `9F3A2B1C`)
 
 ```
-Cash collection of Rs. {#var#} by {#var#} on {#var#} is confirmed for Puro Soul, a unit of Centre Point Hospitality. Ref {#var#}.
+Cash collection of Rs. {#var#} by {#var#} on {#var#} is confirmed for Puro Soul - Hotel Centre Point. Ref {#var#}.
 ```
 
 After DLT approval, add the header and templates in **Fast2SMS → DLT SMS** to get a numeric Message ID for each, then fill `FAST2SMS_DLT_SENDER_ID` and the three `FAST2SMS_DLT_*_ID` values in `.env` — sends switch from the generic OTP/quick routes to your branded templates automatically. Notes: `SMS_BRAND_NAME` must match the registered brand phrase exactly (it is part of the approved static text); `COMPANY_NAME` (used in PDFs, emails and the web UI, not SMS) can stay `Puro Soul`; and DLT fills each `{#var#}` with at most 30 characters (long collector names are the only realistic risk). The longer brand prefix pushes the collection-OTP and confirmation SMS to two segments (2 credits each); the handover OTP was already two.

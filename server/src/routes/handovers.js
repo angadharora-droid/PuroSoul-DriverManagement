@@ -23,7 +23,7 @@ const router = Router();
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 // DLT requires the registered entity/brand name in the SMS body — keep this
 // identical to the brand phrase in the approved templates and on the portal.
-const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
+const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul - Hotel Centre Point';
 const MAX_HANDOVER_TXNS = 200;
 
 // Abuse guard: at most 10 OTP sends (new + resend) per collector per 15 minutes.

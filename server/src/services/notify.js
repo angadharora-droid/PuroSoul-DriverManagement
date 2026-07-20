@@ -7,7 +7,7 @@ import { formatINR, formatDateTime } from '../utils/format.js';
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 // DLT requires the registered entity/brand name in the SMS body — keep this
 // identical to the brand phrase in the approved templates and on the portal.
-const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
+const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul - Hotel Centre Point';
 
 /**
  * Fired after a transaction is verified. Sends the stakeholder email (with PDF
