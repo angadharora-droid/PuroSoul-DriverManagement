@@ -4,7 +4,7 @@ import PartySelect from '../../components/PartySelect';
 import { Button, Field, Alert, OtpInput, inputClass } from '../../components/ui';
 import Icon from '../../components/icons';
 import { useToast } from '../../components/toast';
-import { formatINR, formatDateTime } from '../../utils/format';
+import { formatINR, formatDateTime, OTP_LENGTH } from '../../utils/format';
 
 function useCountdown(target) {
   const [now, setNow] = useState(Date.now());
@@ -195,7 +195,7 @@ export default function NewCollection() {
             <div className="min-w-0">
               <h2 className="text-lg font-bold leading-snug text-slate-900">Ask the party for the OTP</h2>
               <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                A 6-digit code was sent to <span className="font-semibold text-slate-700">{txn.party?.name}</span>'s mobile ({otpSentTo}).
+                A {OTP_LENGTH}-digit code was sent to <span className="font-semibold text-slate-700">{txn.party?.name}</span>'s mobile ({otpSentTo}).
                 Entering it confirms they acknowledge handing over the cash.
               </p>
             </div>
@@ -221,7 +221,7 @@ export default function NewCollection() {
             <OtpInput value={otp} onChange={setOtp} disabled={expired || busy} />
             <Alert>{error}</Alert>
             <Alert kind="info">{info}</Alert>
-            <Button type="submit" icon={busy ? undefined : 'shield'} className="w-full py-3" loading={busy} disabled={otp.length !== 6 || expired}>
+            <Button type="submit" icon={busy ? undefined : 'shield'} className="w-full py-3" loading={busy} disabled={otp.length !== OTP_LENGTH || expired}>
               {busy ? 'Verifying…' : 'Verify collection'}
             </Button>
           </form>

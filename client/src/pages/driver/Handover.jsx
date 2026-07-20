@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../api/client';
-import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge } from '../../components/ui';
+import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge, Avatar } from '../../components/ui';
 import Icon from '../../components/icons';
-import { formatINR, formatDateTime } from '../../utils/format';
+import { formatINR, formatDateTime, OTP_LENGTH } from '../../utils/format';
 
 function useCountdown(target) {
   const [now, setNow] = useState(Date.now());
@@ -43,6 +44,7 @@ function StepIndicator({ current }) {
 }
 
 export default function Handover() {
+  const navigate = useNavigate();
   const [step, setStep] = useState('select');
   const [cash, setCash] = useState(null);
   const [recipients, setRecipients] = useState([]);
@@ -57,6 +59,11 @@ export default function Handover() {
   const [busy, setBusy] = useState(false);
   const [resendAvailableAt, setResendAvailableAt] = useState(null);
   const [history, setHistory] = useState(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  const selectAllRef = useRef(null);
+  const confirmTimer = useRef(null);
+  useEffect(() => () => clearTimeout(confirmTimer.current), []);
 
   const otpSecondsLeft = useCountdown(step === 'otp' ? handover?.otpExpiresAt : null);
   const resendWait = useCountdown(step === 'otp' ? resendAvailableAt : null);
@@ -72,13 +79,28 @@ export default function Handover() {
   useEffect(() => {
     loadCash();
     loadHistory();
-    api.get('/api/handovers/recipients').then((d) => setRecipients(d.recipients)).catch((err) => setError(err.message));
+    api
+      .get('/api/handovers/recipients')
+      .then((d) => {
+        setRecipients(d.recipients);
+        if (d.recipients.length === 1) setRecipientId(String(d.recipients[0].id));
+      })
+      .catch((err) => setError(err.message));
   }, [loadCash, loadHistory]);
 
   const items = cash?.items || [];
   const selectedItems = items.filter((t) => selected.has(t.id));
   const selectedTotal = selectedItems.reduce((s, t) => s + t.amount, 0);
   const allSelected = items.length > 0 && selected.size === items.length;
+
+  // A handover the driver walked away from mid-OTP: still verifiable, so offer to resume it.
+  const activePending = history?.find(
+    (h) => h.status === 'pending_otp' && new Date(h.otpExpiresAt).getTime() > Date.now()
+  );
+
+  useEffect(() => {
+    if (selectAllRef.current) selectAllRef.current.indeterminate = selected.size > 0 && !allSelected;
+  }, [selected, allSelected]);
 
   function toggle(id) {
     setSelected((prev) => {
@@ -93,6 +115,16 @@ export default function Handover() {
     setSelected(allSelected ? new Set() : new Set(items.map((t) => t.id)));
   }
 
+  function enterOtpStep(h, sentTo) {
+    setHandover(h);
+    setOtpSentTo(sentTo || '');
+    setOtp('');
+    setInfo('');
+    setError('');
+    setConfirmCancel(false);
+    setStep('otp');
+  }
+
   async function startHandover(e) {
     e.preventDefault();
     setError('');
@@ -102,17 +134,18 @@ export default function Handover() {
     setBusy(true);
     try {
       const data = await api.post('/api/handovers', { transactionIds: [...selected], recipientId, notes });
-      setHandover(data.handover);
-      setOtpSentTo(data.otpSentTo);
       setResendAvailableAt(Date.now() + data.handover.resendCooldownSeconds * 1000);
-      setOtp('');
-      setInfo('');
-      setStep('otp');
+      enterOtpStep(data.handover, data.otpSentTo);
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  }
+
+  function resumePending(h) {
+    setResendAvailableAt(null); // server still enforces the real cooldown
+    enterOtpStep(h, '');
   }
 
   async function verifyOtp(e) {
@@ -152,21 +185,35 @@ export default function Handover() {
   function reset() {
     setStep('select');
     setSelected(new Set());
-    setRecipientId('');
     setNotes('');
     setHandover(null);
     setOtp('');
     setError('');
     setInfo('');
+    setConfirmCancel(false);
+    if (recipients.length !== 1) setRecipientId('');
     loadCash();
     loadHistory();
   }
 
-  async function cancelHandover() {
-    if (handover) {
-      await api.post(`/api/handovers/${handover.id}/cancel`).catch(() => {});
+  async function cancelHandover(h) {
+    const target = h || handover;
+    if (target) {
+      await api.post(`/api/handovers/${target.id}/cancel`).catch(() => {});
     }
     reset();
+  }
+
+  /** Cancelling a live handover is destructive — ask for a second tap to confirm. */
+  function onCancelClick() {
+    if (!confirmCancel) {
+      setConfirmCancel(true);
+      clearTimeout(confirmTimer.current);
+      confirmTimer.current = setTimeout(() => setConfirmCancel(false), 3500);
+      return;
+    }
+    clearTimeout(confirmTimer.current);
+    cancelHandover();
   }
 
   // ---------------------------------------------------------------- done ---
@@ -221,7 +268,7 @@ export default function Handover() {
             <div className="min-w-0">
               <h2 className="text-lg font-bold leading-snug text-slate-900">Ask {handover.recipient?.name} for the OTP</h2>
               <p className="mt-1 text-sm leading-relaxed text-slate-500">
-                A 6-digit code was sent to <span className="font-semibold text-slate-700">{handover.recipient?.name}</span>'s mobile ({otpSentTo}).
+                A {OTP_LENGTH}-digit code was sent to <span className="font-semibold text-slate-700">{handover.recipient?.name}</span>'s mobile{otpSentTo ? ` (${otpSentTo})` : ''}.
                 Entering it confirms they received the cash from you.
               </p>
             </div>
@@ -250,7 +297,7 @@ export default function Handover() {
             <OtpInput value={otp} onChange={setOtp} disabled={expired || busy} />
             <Alert>{error}</Alert>
             <Alert kind="info">{info}</Alert>
-            <Button type="submit" icon={busy ? undefined : 'shield'} className="w-full py-3" loading={busy} disabled={otp.length !== 6 || expired}>
+            <Button type="submit" icon={busy ? undefined : 'shield'} className="w-full py-3" loading={busy} disabled={otp.length !== OTP_LENGTH || expired}>
               {busy ? 'Verifying…' : 'Verify handover'}
             </Button>
           </form>
@@ -264,8 +311,13 @@ export default function Handover() {
               <Icon name="refresh" className="h-4 w-4" />
               {handover.resendsLeft === 0 ? 'No resends left' : resendWait > 0 ? `Resend in ${resendWait}s` : `Resend OTP (${handover.resendsLeft} left)`}
             </button>
-            <button onClick={cancelHandover} className="min-h-11 cursor-pointer px-2 text-slate-500 transition-colors hover:text-slate-700">
-              Cancel
+            <button
+              onClick={onCancelClick}
+              className={`min-h-11 cursor-pointer rounded-lg px-2 transition-colors ${
+                confirmCancel ? 'font-semibold text-red-600 hover:text-red-700' : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {confirmCancel ? 'Tap again to cancel' : 'Cancel'}
             </button>
           </div>
         </div>
@@ -278,6 +330,27 @@ export default function Handover() {
     <div className="mx-auto max-w-md space-y-4 animate-fade-in-up">
       <div>
         <StepIndicator current="select" />
+
+        {activePending && (
+          <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 animate-fade-in-up">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                <Icon name="clock" className="h-5 w-5" strokeWidth={2} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-amber-900">Handover awaiting OTP</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
+                  <span className="tnum font-semibold">{formatINR(activePending.totalAmount)}</span> to {activePending.recipient?.name} — the OTP is still valid.
+                </p>
+              </div>
+            </div>
+            <div className="mt-3 flex gap-2">
+              <Button className="flex-1 py-2" onClick={() => resumePending(activePending)}>Continue</Button>
+              <Button variant="secondary" className="flex-1 py-2" onClick={() => cancelHandover(activePending)}>Cancel it</Button>
+            </div>
+          </div>
+        )}
+
         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-card">
           <h2 className="text-lg font-bold text-slate-900">Hand over cash</h2>
           <p className="mt-1 text-sm leading-relaxed text-slate-500">
@@ -293,45 +366,72 @@ export default function Handover() {
                 icon="banknotes"
                 title="No cash to hand over"
                 subtitle="Verified collections that haven't been handed over yet will appear here."
+                action={
+                  <Button variant="secondary" icon="plus" onClick={() => navigate('/')}>
+                    Record a collection
+                  </Button>
+                }
               />
             </>
           ) : (
             <form onSubmit={startHandover} className="mt-5 space-y-4">
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <label className="flex cursor-pointer items-center gap-3 border-b border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm font-semibold text-slate-700">
-                  <input type="checkbox" checked={allSelected} onChange={toggleAll} className="h-4 w-4 rounded accent-brand-700" />
-                  Select all ({items.length} collection{items.length === 1 ? '' : 's'} • {formatINR(cash.totalAmount)})
+              <div className="flex items-center justify-between rounded-xl border border-brand-100 bg-gradient-to-br from-brand-50 to-white px-4 py-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Cash in hand</p>
+                  <p className="tnum text-xl font-bold text-brand-800">{formatINR(cash.totalAmount)}</p>
+                </div>
+                <span className="tnum rounded-full border border-brand-200 bg-white px-2.5 py-1 text-xs font-semibold text-brand-800">
+                  {cash.count} collection{cash.count === 1 ? '' : 's'}
+                </span>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200" role="group" aria-label="Collections to hand over">
+                <label className="flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-200 bg-slate-50/80 px-3.5 py-2.5 text-sm font-semibold text-slate-700">
+                  <input
+                    ref={selectAllRef}
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleAll}
+                    className="h-5 w-5 shrink-0 rounded accent-brand-700"
+                  />
+                  Select all ({items.length})
                 </label>
                 <div className="max-h-72 overflow-y-auto">
-                  {items.map((t) => (
-                    <label
-                      key={t.id}
-                      className="flex cursor-pointer items-center gap-3 border-b border-slate-100 px-3.5 py-2.5 transition-colors last:border-0 hover:bg-slate-50"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={selected.has(t.id)}
-                        onChange={() => toggle(t.id)}
-                        className="h-4 w-4 shrink-0 rounded accent-brand-700"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <p className="truncate text-sm font-semibold text-slate-900">{t.party}</p>
-                          <p className="tnum shrink-0 text-sm font-bold text-slate-900">{formatINR(t.amount)}</p>
+                  {items.map((t, i) => {
+                    const checked = selected.has(t.id);
+                    return (
+                      <label
+                        key={t.id}
+                        className={`flex min-h-11 cursor-pointer items-center gap-3 border-b border-slate-100 px-3.5 py-2.5 transition-colors last:border-0 animate-fade-in-up ${
+                          checked ? 'bg-brand-50/70' : 'hover:bg-slate-50'
+                        }`}
+                        style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggle(t.id)}
+                          className="h-5 w-5 shrink-0 rounded accent-brand-700"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-3">
+                            <p className={`truncate text-sm font-semibold ${checked ? 'text-brand-900' : 'text-slate-900'}`}>{t.party}</p>
+                            <p className={`tnum shrink-0 text-sm font-bold ${checked ? 'text-brand-800' : 'text-slate-900'}`}>{formatINR(t.amount)}</p>
+                          </div>
+                          <p className="mt-0.5 text-xs text-slate-500">
+                            {formatDateTime(t.collectedAt)} • ref <span className="tnum font-mono">{t.ref}</span>
+                          </p>
                         </div>
-                        <p className="mt-0.5 text-xs text-slate-500">
-                          {formatDateTime(t.collectedAt)} • ref <span className="tnum font-mono">{t.ref}</span>
-                        </p>
-                      </div>
-                    </label>
-                  ))}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
               {selected.size > 0 && (
-                <div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm">
+                <div className="flex items-center justify-between rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-sm animate-fade-in-up">
                   <span className="font-semibold text-brand-900">
-                    Handing over {selected.size} collection{selected.size === 1 ? '' : 's'}
+                    Handing over {selected.size} of {items.length}
                   </span>
                   <span className="tnum text-base font-bold text-brand-900">{formatINR(selectedTotal)}</span>
                 </div>
@@ -384,13 +484,21 @@ export default function Handover() {
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">
           <h3 className="mb-3 text-sm font-bold text-slate-700">Recent handovers</h3>
           <div className="space-y-2.5">
-            {history.map((h) => (
-              <div key={h.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3.5 py-2.5">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-slate-900">
-                    {h.recipient?.name} <span className="font-normal text-slate-400">• {h.transactionCount} collection{h.transactionCount === 1 ? '' : 's'}</span>
-                  </p>
-                  <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(h.createdAt)}</p>
+            {history.map((h, i) => (
+              <div
+                key={h.id}
+                className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 px-3.5 py-2.5 animate-fade-in-up"
+                style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Avatar name={h.recipient?.name} className="h-8 w-8 text-[11px]" />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {h.recipient?.name}{' '}
+                      <span className="font-normal text-slate-400">• {h.transactionCount} collection{h.transactionCount === 1 ? '' : 's'}</span>
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">{formatDateTime(h.createdAt)}</p>
+                  </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="tnum text-sm font-bold text-slate-900">{formatINR(h.totalAmount)}</span>

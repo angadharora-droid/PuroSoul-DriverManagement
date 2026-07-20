@@ -43,8 +43,12 @@ export async function notifyVerified(txn) {
     const dateStr = formatDateTime(txn.verifiedAt);
     await sendSms(txn.party.mobile, {
       type: 'confirmation',
+      template: 'confirmation',
       text: `${COMPANY}: Collection of ${formatINR(txn.amount)} received by ${txn.driver.name} on ${dateStr} is confirmed. Ref ${txn.ref}.`,
       vars: { amount: formatINR(txn.amount), driver: txn.driver.name, date: dateStr, ref: txn.ref },
+      // {#var#} fill order of the registered DLT template — keep in sync with the
+      // portal. "Rs." is static text in the template, so the amount var is numeric.
+      dltVars: [formatINR(txn.amount).replace('Rs. ', ''), txn.driver.name, dateStr, txn.ref],
     });
     txn.smsConfirmationSent = true;
   } catch (err) {

@@ -42,7 +42,7 @@ With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printe
 
 1. Driver logs in (mobile + password) → **New collection**.
 2. Selects party from the searchable dropdown (options come from the DB; the backend re-validates the id and rejects anything not in the approved list). Enters amount and optional notes.
-3. **Send OTP to party** → 6-digit OTP (crypto-random, bcrypt-hashed at rest, 5-min expiry) is SMS'd to the party's registered mobile. The driver never sees the number or the code — the app shows only the masked number.
+3. **Send OTP to party** → 4-digit OTP (crypto-random, bcrypt-hashed at rest, 5-min expiry) is SMS'd to the party's registered mobile. The driver never sees the number or the code — the app shows only the masked number.
 4. Driver asks the party for the code and enters it. 3 wrong attempts lock the transaction (`failed`); a fresh OTP resend (max 3, 60s cooldown, plus a 10-sends/15-min per-driver rate limit) unlocks it. Expired OTPs require resend.
 5. On success the transaction is `verified` and **immutable** (enforced by Mongoose hooks — only audit notes and notification bookkeeping may be appended). In the background:
    - Email with the **PDF receipt attached** goes to the party's `notifyEmails` ∪ the global list from Settings.
@@ -65,6 +65,30 @@ After collecting, the driver deposits the cash with an admin (manager/cashier) �
 - **Drivers** — add/edit/deactivate, password resets.
 - **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional mobile number (required for that admin to receive cash handover OTPs). You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
+
+## DLT SMS templates
+
+Once your header (sender ID) is approved on the DLT portal, register these three content templates against it (category **Service – Implicit**; tick the "contains OTP" option for the two OTP templates where the portal asks). The static text must stay exactly as below — the app sends these messages word-for-word with the `{#var#}` parts filled in.
+
+**1. Collection OTP** — variables in order: OTP code (NUMBER, e.g. `4829`), amount (NUMBER, e.g. `5,000.00`), validity minutes (NUMBER, e.g. `5`)
+
+```
+Puro Soul: {#var#} is the OTP to confirm cash collection of Rs. {#var#}. Share it ONLY with the delivery driver present with you. Valid {#var#} min.
+```
+
+**2. Handover OTP** — variables in order: OTP code (NUMBER, `4829`), amount (NUMBER, `12,500.00`), collection count (TEXT, `3 collections`), driver name (TEXT, `Ramesh Kumar`), validity minutes (NUMBER, `5`)
+
+```
+Puro Soul: {#var#} is the OTP to confirm you are RECEIVING Rs. {#var#} cash ({#var#}) from driver {#var#}. Share it ONLY with the driver handing over. Valid {#var#} min.
+```
+
+**3. Collection confirmation** — variables in order: amount (NUMBER, `5,000.00`), driver name (TEXT, `Ramesh Kumar`), date-time (TEXT/DATE, `15 Jul 2026, 09:30 pm`), reference (ALPHANUMERIC, `9F3A2B1C`)
+
+```
+Puro Soul: Collection of Rs. {#var#} received by {#var#} on {#var#} is confirmed. Ref {#var#}.
+```
+
+After DLT approval, add the header and templates in **Fast2SMS → DLT SMS** to get a numeric Message ID for each, then fill `FAST2SMS_DLT_SENDER_ID` and the three `FAST2SMS_DLT_*_ID` values in `.env` — sends switch from the generic OTP/quick routes to your branded templates automatically. Notes: `COMPANY_NAME` must remain exactly `Puro Soul` (it is part of the registered text), and DLT fills each `{#var#}` with at most 30 characters (long driver names are the only realistic risk).
 
 ## Decisions on the open items
 

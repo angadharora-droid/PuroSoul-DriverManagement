@@ -28,7 +28,8 @@ async function sendMsg91(mobile, message) {
   const authKey = requiredEnv('MSG91_AUTH_KEY');
   const templateId =
     message.type === 'otp'
-      ? requiredEnv('MSG91_OTP_TEMPLATE_ID')
+      ? (message.template === 'handover-otp' && process.env.MSG91_HANDOVER_TEMPLATE_ID) ||
+        requiredEnv('MSG91_OTP_TEMPLATE_ID')
       : requiredEnv('MSG91_SMS_TEMPLATE_ID');
 
   const res = await fetch('https://control.msg91.com/api/v5/flow', {
@@ -76,6 +77,29 @@ async function sendFast2Sms(mobile, message) {
     const body = await res.json().catch(() => ({}));
     return { res, body };
   };
+
+  // Own DLT templates (preferred): once the header (sender ID) and templates
+  // are DLT-approved and added in Fast2SMS → DLT SMS, put their Message IDs in
+  // .env and the branded template goes out instead of the generic routes below.
+  const senderId = process.env.FAST2SMS_DLT_SENDER_ID;
+  const dltMessageId = {
+    'collection-otp': process.env.FAST2SMS_DLT_COLLECTION_OTP_ID,
+    'handover-otp': process.env.FAST2SMS_DLT_HANDOVER_OTP_ID,
+    confirmation: process.env.FAST2SMS_DLT_CONFIRMATION_ID,
+  }[message.template];
+  if (senderId && dltMessageId) {
+    const { res, body } = await post({
+      route: 'dlt',
+      sender_id: senderId,
+      message: dltMessageId,
+      variables_values: (message.dltVars || []).join('|'),
+      numbers: mobile,
+    });
+    if (!res.ok || body.return === false) {
+      throw new Error(`Fast2SMS DLT send failed: ${(body.message && String(body.message)) || res.status}`);
+    }
+    return { provider: 'fast2sms', id: body.request_id };
+  }
 
   // OTP route sends only the numeric code ("{code} is your verification code")
   // but is DLT-approved on Fast2SMS's side, so it reaches DND numbers 24/7.
