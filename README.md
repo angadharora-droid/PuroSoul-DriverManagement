@@ -70,19 +70,19 @@ After collecting, the driver deposits the cash with an admin (manager/cashier) �
 
 Once your header (sender ID) is approved on the DLT portal, register these three content templates against it (category **Service – Implicit**; tick the "contains OTP" option for the two OTP templates where the portal asks). The static text must stay exactly as below — the app sends these messages word-for-word with the `{#var#}` parts filled in.
 
-**1. Collection OTP** — variables in order: OTP code (NUMBER, e.g. `4829`), amount (NUMBER, e.g. `5,000.00`), validity minutes (NUMBER, e.g. `5`)
+**1. Collection OTP** — variables in order: OTP code (NUMBER, e.g. `4829`), amount (TEXT — the value has `,` and `.`, so NUMBER is rejected; e.g. `5,000.00`), validity minutes (NUMBER, e.g. `5`)
 
 ```
 Puro Soul: {#var#} is the OTP to confirm cash collection of Rs. {#var#}. Share it ONLY with the delivery driver present with you. Valid {#var#} min.
 ```
 
-**2. Handover OTP** — variables in order: OTP code (NUMBER, `4829`), amount (NUMBER, `12,500.00`), collection count (TEXT, `3 collections`), driver name (TEXT, `Ramesh Kumar`), validity minutes (NUMBER, `5`)
+**2. Handover OTP** — variables in order: OTP code (NUMBER, `4829`), amount (TEXT, `12,500.00`), collection count (TEXT, `3 collections`), driver name (TEXT, `Ramesh Kumar`), validity minutes (NUMBER, `5`)
 
 ```
 Puro Soul: {#var#} is the OTP to confirm you are RECEIVING Rs. {#var#} cash ({#var#}) from driver {#var#}. Share it ONLY with the driver handing over. Valid {#var#} min.
 ```
 
-**3. Collection confirmation** — variables in order: amount (NUMBER, `5,000.00`), driver name (TEXT, `Ramesh Kumar`), date-time (TEXT/DATE, `15 Jul 2026, 09:30 pm`), reference (ALPHANUMERIC, `9F3A2B1C`)
+**3. Collection confirmation** — variables in order: amount (TEXT, `5,000.00`), driver name (TEXT, `Ramesh Kumar`), date-time (TEXT/DATE, `15 Jul 2026, 09:30 pm`), reference (ALPHANUMERIC, `9F3A2B1C`)
 
 ```
 Puro Soul: Collection of Rs. {#var#} received by {#var#} on {#var#} is confirmed. Ref {#var#}.

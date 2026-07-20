@@ -44,7 +44,8 @@ function otpMessage(code, amount) {
     text: `${COMPANY}: ${code} is the OTP to confirm cash collection of ${formatINR(amount)}. Share it ONLY with the delivery driver present with you. Valid ${ttl} min.`,
     vars: { otp: code, amount: formatINR(amount) },
     // {#var#} fill order of the registered DLT template — keep in sync with the
-    // portal. "Rs." is static text in the template, so the amount var is numeric.
+    // portal. "Rs." stays in the template's static text; the amount keeps its
+    // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
     dltVars: [code, formatINR(amount).replace('Rs. ', ''), String(ttl)],
   };
 }

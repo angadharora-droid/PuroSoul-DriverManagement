@@ -47,7 +47,8 @@ export async function notifyVerified(txn) {
       text: `${COMPANY}: Collection of ${formatINR(txn.amount)} received by ${txn.driver.name} on ${dateStr} is confirmed. Ref ${txn.ref}.`,
       vars: { amount: formatINR(txn.amount), driver: txn.driver.name, date: dateStr, ref: txn.ref },
       // {#var#} fill order of the registered DLT template — keep in sync with the
-      // portal. "Rs." is static text in the template, so the amount var is numeric.
+      // portal. "Rs." stays in the template's static text; the amount keeps its
+      // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
       dltVars: [formatINR(txn.amount).replace('Rs. ', ''), txn.driver.name, dateStr, txn.ref],
     });
     txn.smsConfirmationSent = true;
