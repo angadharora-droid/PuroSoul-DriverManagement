@@ -7,7 +7,7 @@ export function AuthProvider({ children }) {
   const [auth, setAuthState] = useState(getAuth);
 
   const login = useCallback(async (role, credentials) => {
-    const path = role === 'admin' ? '/api/auth/admin/login' : '/api/auth/driver/login';
+    const path = role === 'admin' ? '/api/auth/admin/login' : '/api/auth/collector/login';
     const data = await api.post(path, credentials);
     const next = { token: data.token, user: data.user };
     setAuth(next);

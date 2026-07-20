@@ -15,7 +15,7 @@ import Icon from '../../components/icons';
 import { useToast } from '../../components/toast';
 import { formatINR, formatDateTime, STATUS_LABELS } from '../../utils/format';
 
-const emptyFilters = { from: '', to: '', driverId: '', partyId: '', status: '' };
+const emptyFilters = { from: '', to: '', collectorId: '', partyId: '', status: '' };
 
 function FilterField({ label, children }) {
   return (
@@ -31,13 +31,13 @@ export default function Collections() {
   const [filters, setFilters] = useState(emptyFilters);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
-  const [drivers, setDrivers] = useState([]);
+  const [collectors, setCollectors] = useState([]);
   const [parties, setParties] = useState([]);
   const [detail, setDetail] = useState(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/api/drivers').then((d) => setDrivers(d.drivers)).catch(() => {});
+    api.get('/api/collectors').then((d) => setCollectors(d.collectors)).catch(() => {});
     api.get('/api/parties').then((d) => setParties(d.parties)).catch(() => {});
   }, []);
 
@@ -62,7 +62,7 @@ export default function Collections() {
     <div className="space-y-4">
       <PageHeader
         title="Collections"
-        subtitle="Every OTP-verified cash collection across all drivers"
+        subtitle="Every OTP-verified cash collection across all collectors"
         actions={
           <Button
             variant="secondary"
@@ -87,10 +87,10 @@ export default function Collections() {
           <FilterField label="To">
             <input type="date" className={inputClass} value={filters.to} onChange={(e) => setFilter('to', e.target.value)} />
           </FilterField>
-          <FilterField label="Driver">
-            <select className={inputClass} value={filters.driverId} onChange={(e) => setFilter('driverId', e.target.value)}>
-              <option value="">All drivers</option>
-              {drivers.map((d) => (
+          <FilterField label="Collector">
+            <select className={inputClass} value={filters.collectorId} onChange={(e) => setFilter('collectorId', e.target.value)}>
+              <option value="">All collectors</option>
+              {collectors.map((d) => (
                 <option key={d._id} value={d._id}>{d.name}</option>
               ))}
             </select>
@@ -156,7 +156,7 @@ export default function Collections() {
                     <th className="px-4 py-3 font-semibold">Date</th>
                     <th className="px-4 py-3 font-semibold">Ref</th>
                     <th className="px-4 py-3 font-semibold">Party</th>
-                    <th className="px-4 py-3 font-semibold">Driver</th>
+                    <th className="px-4 py-3 font-semibold">Collector</th>
                     <th className="px-4 py-3 text-right font-semibold">Amount</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
@@ -177,7 +177,7 @@ export default function Collections() {
                           {t.party?.name || '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{t.driver?.name || '—'}</td>
+                      <td className="px-4 py-3 text-slate-600">{t.collector?.name || '—'}</td>
                       <td className="tnum whitespace-nowrap px-4 py-3 text-right font-semibold">{formatINR(t.amount)}</td>
                       <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                       <td className="px-4 py-3 text-right">
@@ -269,7 +269,7 @@ function DetailModal({ txn, onClose, onChanged }) {
           <Avatar name={txn.party?.name} className="h-10 w-10 text-sm" />
           <div>
             <p className="font-semibold text-slate-900">{txn.party?.name}</p>
-            <p className="text-xs text-slate-500">collected by {txn.driver?.name}</p>
+            <p className="text-xs text-slate-500">collected by {txn.collector?.name}</p>
           </div>
         </div>
         <div className="text-right">
@@ -329,7 +329,7 @@ function DetailModal({ txn, onClose, onChanged }) {
             {[
               ['Reference', txn.ref],
               ['Notes', txn.notes || '—'],
-              ['Driver IP', txn.driverIp || '—'],
+              ['Collector IP', txn.collectorIp || '—'],
               ['Device', txn.deviceInfo ? txn.deviceInfo.slice(0, 60) + (txn.deviceInfo.length > 60 ? '…' : '') : '—'],
             ].map(([label, value]) => (
               <div key={label} className="flex justify-between gap-4 border-b border-slate-100 pb-2">

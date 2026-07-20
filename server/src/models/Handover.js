@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 export const HANDOVER_STATUSES = ['pending_otp', 'verified', 'expired', 'failed', 'cancelled'];
 
 /**
- * A handover is the driver passing collected cash to an admin (manager/cashier),
+ * A handover is the collector passing collected cash to an admin (manager/cashier),
  * confirmed by an OTP sent to the RECIPIENT's mobile. Like transactions, a
  * verified handover becomes immutable except for notification bookkeeping.
  */
@@ -11,7 +11,7 @@ const MUTABLE_AFTER_VERIFY = new Set(['notifyError', 'updatedAt']);
 
 const handoverSchema = new mongoose.Schema(
   {
-    driver: { type: mongoose.Schema.Types.ObjectId, ref: 'Driver', required: true, index: true },
+    collector: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', required: true, index: true },
     recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', required: true, index: true },
     // Snapshot so the record stays readable even if the admin is renamed/removed.
     recipientName: { type: String, required: true, trim: true },
@@ -38,7 +38,7 @@ const handoverSchema = new mongoose.Schema(
     verifiedAt: { type: Date },
     notifyError: { type: String, default: '' },
 
-    driverIp: { type: String, default: '' },
+    collectorIp: { type: String, default: '' },
     deviceInfo: { type: String, default: '' },
   },
   {
@@ -58,7 +58,7 @@ handoverSchema.virtual('ref').get(function () {
 });
 
 handoverSchema.index({ createdAt: -1 });
-handoverSchema.index({ driver: 1, createdAt: -1 });
+handoverSchema.index({ collector: 1, createdAt: -1 });
 handoverSchema.index({ transactions: 1 });
 
 handoverSchema.post('init', function () {

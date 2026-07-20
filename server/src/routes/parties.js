@@ -5,10 +5,10 @@ import { requireAuth } from '../middleware/auth.js';
 const router = Router();
 
 /**
- * Options for the driver's select-only dropdown. Deliberately excludes the
- * party's mobile number — drivers never see it, the OTP goes there directly.
+ * Options for the collector's select-only dropdown. Deliberately excludes the
+ * party's mobile number — collectors never see it, the OTP goes there directly.
  */
-router.get('/options', requireAuth('driver', 'admin'), async (_req, res) => {
+router.get('/options', requireAuth('collector', 'admin'), async (_req, res) => {
   const parties = await Party.find({ isActive: true }).sort({ name: 1 }).select('name distributorCode');
   res.json({ parties });
 });

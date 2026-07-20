@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import Driver from '../models/Driver.js';
+import Collector from '../models/Collector.js';
 import Admin from '../models/Admin.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-only-insecure-secret';
@@ -11,9 +11,9 @@ export function signToken(account, role) {
 }
 
 /**
- * requireAuth('driver') / requireAuth('admin') / requireAuth('driver', 'admin')
+ * requireAuth('collector') / requireAuth('admin') / requireAuth('collector', 'admin')
  * Verifies the JWT and re-checks the account is still active on every request,
- * so deactivating a driver locks them out immediately.
+ * so deactivating a collector locks them out immediately.
  */
 export function requireAuth(...roles) {
   return async (req, res, next) => {
@@ -33,7 +33,7 @@ export function requireAuth(...roles) {
         return res.status(403).json({ error: 'You do not have permission to do that' });
       }
 
-      const Model = payload.role === 'driver' ? Driver : Admin;
+      const Model = payload.role === 'collector' ? Collector : Admin;
       const account = await Model.findById(payload.sub);
       if (!account || account.isActive === false) {
         return res.status(401).json({ error: 'This account has been disabled' });

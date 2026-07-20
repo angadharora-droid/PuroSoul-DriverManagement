@@ -46,7 +46,7 @@ export function receiptPdf(txn) {
   const rows = [
     ['Party', txn.party?.name || '—'],
     ['Party mobile', txn.party?.mobile ? `+91 ${txn.party.mobile}` : '—'],
-    ['Collected by (driver)', txn.driver?.name || '—'],
+    ['Collected by (collector)', txn.collector?.name || '—'],
     ['Amount collected', formatINR(txn.amount)],
     ['Collected on', formatDateTime(txn.createdAt)],
     ['OTP verified at', formatDateTime(txn.verifiedAt)],
@@ -84,7 +84,7 @@ const TABLE_COLS = [
   { key: 'date', label: 'Date & time', x: 50, w: 115 },
   { key: 'ref', label: 'Ref', x: 165, w: 60 },
   { key: 'party', label: 'Party', x: 225, w: 120 },
-  { key: 'driver', label: 'Driver', x: 345, w: 95 },
+  { key: 'collector', label: 'Collector', x: 345, w: 95 },
   { key: 'amount', label: 'Amount', x: 440, w: 105, align: 'right' },
 ];
 
@@ -106,7 +106,7 @@ function ensureSpace(doc, y, needed = 60, cols = TABLE_COLS) {
 
 /**
  * Multi-transaction report used by the Reports section exports.
- * report = { title, subtitle, groups: [{ label, breakdown?, rows: [{date,ref,party,driver,amount}], subtotal, count }], grandTotal, grandCount }
+ * report = { title, subtitle, groups: [{ label, breakdown?, rows: [{date,ref,party,collector,amount}], subtotal, count }], grandTotal, grandCount }
  */
 export function reportPdf(report) {
   const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
@@ -142,7 +142,7 @@ export function reportPdf(report) {
       doc.text(formatDateTime(row.date), TABLE_COLS[0].x, y, { width: TABLE_COLS[0].w, height: 12, ellipsis: true });
       doc.text(row.ref, TABLE_COLS[1].x, y, { width: TABLE_COLS[1].w });
       doc.text(row.party, TABLE_COLS[2].x, y, { width: TABLE_COLS[2].w, ellipsis: true, height: 12 });
-      doc.text(row.driver, TABLE_COLS[3].x, y, { width: TABLE_COLS[3].w, ellipsis: true, height: 12 });
+      doc.text(row.collector, TABLE_COLS[3].x, y, { width: TABLE_COLS[3].w, ellipsis: true, height: 12 });
       doc.text(formatINR(row.amount), TABLE_COLS[4].x, y, { width: TABLE_COLS[4].w, align: 'right' });
       y += 16;
     }

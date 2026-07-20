@@ -15,7 +15,7 @@ const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Poi
  * was sent on the transaction. Failures are recorded, never thrown — the
  * verification itself has already succeeded.
  *
- * txn must be populated with party and driver.
+ * txn must be populated with party and collector.
  */
 export async function notifyVerified(txn) {
   const settings = await getGlobalSettings().catch(() => null);
@@ -47,12 +47,12 @@ export async function notifyVerified(txn) {
     await sendSms(txn.party.mobile, {
       type: 'confirmation',
       template: 'confirmation',
-      text: `Cash collection of ${formatINR(txn.amount)} by ${txn.driver.name} on ${dateStr} is confirmed for ${SMS_BRAND}. Ref ${txn.ref}.`,
-      vars: { amount: formatINR(txn.amount), driver: txn.driver.name, date: dateStr, ref: txn.ref },
+      text: `Cash collection of ${formatINR(txn.amount)} by ${txn.collector.name} on ${dateStr} is confirmed for ${SMS_BRAND}. Ref ${txn.ref}.`,
+      vars: { amount: formatINR(txn.amount), collector: txn.collector.name, date: dateStr, ref: txn.ref },
       // {#var#} fill order of the registered DLT template — keep in sync with the
       // portal. "Rs." stays in the template's static text; the amount keeps its
       // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
-      dltVars: [formatINR(txn.amount).replace('Rs. ', ''), txn.driver.name, dateStr, txn.ref],
+      dltVars: [formatINR(txn.amount).replace('Rs. ', ''), txn.collector.name, dateStr, txn.ref],
     });
     txn.smsConfirmationSent = true;
   } catch (err) {
@@ -75,7 +75,7 @@ function emailHtml(txn) {
     <table style="border-collapse:collapse;background:#eff6fc;border-radius:8px;width:100%">
       ${row('Party', txn.party.name)}
       ${row('Amount', formatINR(txn.amount))}
-      ${row('Driver', txn.driver.name)}
+      ${row('Collector', txn.collector.name)}
       ${row('Verified at', formatDateTime(txn.verifiedAt) + ' IST')}
       ${row('Reference', txn.ref)}
       ${txn.notes ? row('Notes', txn.notes) : ''}

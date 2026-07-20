@@ -2,7 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import Party from '../models/Party.js';
-import Driver from '../models/Driver.js';
+import Collector from '../models/Collector.js';
 import Transaction from '../models/Transaction.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendSms } from '../services/sms.js';
@@ -28,11 +28,11 @@ const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 // identical to the brand phrase in the approved templates and on the portal.
 const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
 
-// Abuse guard: at most 10 OTP sends (new + resend) per driver per 15 minutes.
+// Abuse guard: at most 10 OTP sends (new + resend) per collector per 15 minutes.
 const otpSendLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  keyGenerator: (req) => `driver:${req.user.id}`,
+  keyGenerator: (req) => `collector:${req.user.id}`,
   validate: false,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
@@ -44,7 +44,7 @@ function otpMessage(code, amount) {
   return {
     type: 'otp',
     template: 'collection-otp',
-    text: `${code} is your OTP for confirming cash collection of ${formatINR(amount)} for ${SMS_BRAND}. Share this OTP only with the delivery driver present with you. Valid for ${ttl} minutes.`,
+    text: `${code} is your OTP for confirming cash collection of ${formatINR(amount)} for ${SMS_BRAND}. Share this OTP only with the delivery collector present with you. Valid for ${ttl} minutes.`,
     vars: { otp: code, amount: formatINR(amount) },
     // {#var#} fill order of the registered DLT template — keep in sync with the
     // portal. "Rs." stays in the template's static text; the amount keeps its
@@ -53,7 +53,7 @@ function otpMessage(code, amount) {
   };
 }
 
-function driverView(txn, extra = {}) {
+function collectorView(txn, extra = {}) {
   return {
     id: txn._id,
     ref: txn.ref,
@@ -71,10 +71,10 @@ function driverView(txn, extra = {}) {
   };
 }
 
-// ---------------------------------------------------------------- driver ---
+// ---------------------------------------------------------------- collector ---
 
 /** Start a collection: validates the party against the DB and sends the OTP to the PARTY's mobile. */
-router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
+router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   const { partyId, amount, notes } = req.body || {};
 
   // Backend re-validation: the party must exist in the approved database and be active.
@@ -89,14 +89,14 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
   const code = generateOtp();
   const txn = await Transaction.create({
     party: party._id,
-    driver: req.user.id,
+    collector: req.user.id,
     amount: Math.round(amt * 100) / 100,
     notes: notes ? String(notes).slice(0, 500) : '',
     otpCodeHash: await hashOtp(code),
     otpExpiresAt: otpExpiry(),
     lastOtpSentAt: new Date(),
     status: 'pending_otp',
-    driverIp: req.ip || '',
+    collectorIp: req.ip || '',
     deviceInfo: (req.get('user-agent') || '').slice(0, 300),
   });
 
@@ -112,15 +112,15 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
 
   await txn.populate('party', 'name');
   res.status(201).json({
-    transaction: driverView(txn),
+    transaction: collectorView(txn),
     otpSentTo: maskMobile(party.mobile),
     message: `OTP sent to ${party.name}'s registered mobile — ask the party for the ${OTP_LENGTH}-digit code.`,
   });
 });
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
-router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req, res) => {
-  const txn = await Transaction.findOne({ _id: req.params.id, driver: req.user.id }).populate('party');
+router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+  const txn = await Transaction.findOne({ _id: req.params.id, collector: req.user.id }).populate('party');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
   // 'failed' (locked after wrong attempts) is recoverable with a fresh OTP, per policy.
   if (!['pending_otp', 'expired', 'failed'].includes(txn.status)) {
@@ -148,7 +148,7 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
   try {
     await sendSms(txn.party.mobile, otpMessage(code, txn.amount));
   } catch (err) {
-    // A failed send must not cost the driver a resend or restart the cooldown.
+    // A failed send must not cost the collector a resend or restart the cooldown.
     txn.otpResendCount -= 1;
     txn.lastOtpSentAt = prevLastOtpSentAt;
     await txn.save().catch(() => {});
@@ -156,16 +156,16 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
     return res.status(502).json({ error: 'Could not send OTP SMS — please try again' });
   }
 
-  res.json({ transaction: driverView(txn), otpSentTo: maskMobile(txn.party.mobile) });
+  res.json({ transaction: collectorView(txn), otpSentTo: maskMobile(txn.party.mobile) });
 });
 
-/** Verify the OTP the driver got verbally from the party. */
-router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
+/** Verify the OTP the collector got verbally from the party. */
+router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
   const otp = String((req.body || {}).otp || '').trim();
-  const txn = await Transaction.findOne({ _id: req.params.id, driver: req.user.id }).populate('party driver');
+  const txn = await Transaction.findOne({ _id: req.params.id, collector: req.user.id }).populate('party collector');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
 
-  if (txn.status === 'verified') return res.json({ transaction: driverView(txn) }); // idempotent
+  if (txn.status === 'verified') return res.json({ transaction: collectorView(txn) }); // idempotent
   if (txn.status === 'failed') {
     return res.status(400).json({ error: 'This collection is locked after too many wrong attempts — resend OTP or start again' });
   }
@@ -174,7 +174,7 @@ router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
       txn.status = 'expired';
       await txn.save();
     }
-    return res.status(400).json({ error: 'OTP has expired — please resend', expired: true, transaction: driverView(txn) });
+    return res.status(400).json({ error: 'OTP has expired — please resend', expired: true, transaction: collectorView(txn) });
   }
   if (!isValidOtp(otp)) return res.status(400).json({ error: `Enter the ${OTP_LENGTH}-digit OTP` });
 
@@ -198,26 +198,26 @@ router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
   // Email + SMS fire in the background; verification is already final.
   notifyVerified(txn).catch((err) => console.error('[notify] failed:', err.message));
 
-  res.json({ transaction: driverView(txn), verified: true });
+  res.json({ transaction: collectorView(txn), verified: true });
 });
 
-/** Driver's own history. */
-router.get('/mine', requireAuth('driver'), async (req, res) => {
+/** Collector's own history. */
+router.get('/mine', requireAuth('collector'), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
-  const filter = { driver: req.user.id };
+  const filter = { collector: req.user.id };
   const [items, total] = await Promise.all([
     Transaction.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('party', 'name'),
     Transaction.countDocuments(filter),
   ]);
-  res.json({ items: items.map((t) => driverView(t)), total, page, pages: Math.ceil(total / limit) });
+  res.json({ items: items.map((t) => collectorView(t)), total, page, pages: Math.ceil(total / limit) });
 });
 
 // ----------------------------------------------------------------- admin ---
 
 function adminFilter(q) {
   const filter = {};
-  if (q.driverId && mongoose.isValidObjectId(q.driverId)) filter.driver = new mongoose.Types.ObjectId(q.driverId);
+  if (q.collectorId && mongoose.isValidObjectId(q.collectorId)) filter.collector = new mongoose.Types.ObjectId(q.collectorId);
   if (q.partyId && mongoose.isValidObjectId(q.partyId)) filter.party = new mongoose.Types.ObjectId(q.partyId);
   if (q.status) filter.status = q.status;
   const { start, end } = dateRange(q.from, q.to);
@@ -237,7 +237,7 @@ router.get('/', requireAuth('admin'), async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit)
       .populate('party', 'name')
-      .populate('driver', 'name mobile'),
+      .populate('collector', 'name mobile'),
     Transaction.countDocuments(filter),
     Transaction.aggregate([
       { $match: { ...filter, status: 'verified' } },
@@ -261,15 +261,15 @@ router.get('/export.csv', requireAuth('admin'), async (req, res) => {
     .sort({ createdAt: -1 })
     .limit(10000)
     .populate('party', 'name')
-    .populate('driver', 'name');
+    .populate('collector', 'name');
 
   const csv = toCsv(
-    ['Date', 'Ref', 'Party', 'Driver', 'Amount (INR)', 'Status', 'Verified At', 'Notes', 'Emails Sent', 'SMS Sent'],
+    ['Date', 'Ref', 'Party', 'Collector', 'Amount (INR)', 'Status', 'Verified At', 'Notes', 'Emails Sent', 'SMS Sent'],
     items.map((t) => [
       formatDateTime(t.createdAt),
       t.ref,
       t.party?.name || '',
-      t.driver?.name || '',
+      t.collector?.name || '',
       t.amount.toFixed(2),
       t.status,
       t.verifiedAt ? formatDateTime(t.verifiedAt) : '',
@@ -284,11 +284,11 @@ router.get('/export.csv', requireAuth('admin'), async (req, res) => {
   res.send(csv);
 });
 
-/** Receipt PDF for a single verified collection (admin, or the driver who collected it). */
-router.get('/:id/receipt.pdf', requireAuth('admin', 'driver'), async (req, res) => {
-  const txn = await Transaction.findById(req.params.id).populate('party driver');
+/** Receipt PDF for a single verified collection (admin, or the collector who collected it). */
+router.get('/:id/receipt.pdf', requireAuth('admin', 'collector'), async (req, res) => {
+  const txn = await Transaction.findById(req.params.id).populate('party collector');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
-  if (req.user.role === 'driver' && txn.driver._id.toString() !== req.user.id) {
+  if (req.user.role === 'collector' && txn.collector._id.toString() !== req.user.id) {
     return res.status(403).json({ error: 'Not your collection' });
   }
   if (txn.status !== 'verified') return res.status(400).json({ error: 'Receipt is only available for verified collections' });

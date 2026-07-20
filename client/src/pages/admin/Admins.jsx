@@ -136,7 +136,7 @@ function AdminModal({ admin, onClose, onSaved }) {
             required
           />
         </Field>
-        <Field label="Mobile (optional)" hint="10-digit number — needed to receive cash handover OTPs from drivers">
+        <Field label="Mobile (optional)" hint="10-digit number — needed to receive cash handover OTPs from collectors">
           <Input
             type="tel"
             inputMode="numeric"

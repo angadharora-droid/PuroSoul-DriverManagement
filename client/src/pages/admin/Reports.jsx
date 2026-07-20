@@ -8,7 +8,7 @@ import { formatINR, formatDateTime, todayStr, STATUS_LABELS } from '../../utils/
 const TABS = [
   { value: 'daily', label: 'Daily', icon: 'calendar' },
   { value: 'party', label: 'By party', icon: 'storefront' },
-  { value: 'driver', label: 'By driver', icon: 'truck' },
+  { value: 'collector', label: 'By collector', icon: 'truck' },
   { value: 'handover', label: 'Handovers', icon: 'arrows-right-left' },
   { value: 'custom', label: 'Custom range', icon: 'adjustments' },
 ];
@@ -20,9 +20,9 @@ export default function Reports() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [partyId, setPartyId] = useState('');
-  const [driverId, setDriverId] = useState('');
+  const [collectorId, setCollectorId] = useState('');
   const [parties, setParties] = useState([]);
-  const [drivers, setDrivers] = useState([]);
+  const [collectors, setCollectors] = useState([]);
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -30,7 +30,7 @@ export default function Reports() {
 
   useEffect(() => {
     api.get('/api/parties').then((d) => setParties(d.parties)).catch(() => {});
-    api.get('/api/drivers').then((d) => setDrivers(d.drivers)).catch(() => {});
+    api.get('/api/collectors').then((d) => setCollectors(d.collectors)).catch(() => {});
   }, []);
 
   const params = useCallback(
@@ -38,9 +38,9 @@ export default function Reports() {
       type: tab,
       ...(tab === 'daily' ? { date } : { from, to }),
       ...(tab !== 'daily' && tab !== 'handover' && partyId ? { partyId } : {}),
-      ...(tab !== 'daily' && driverId ? { driverId } : {}),
+      ...(tab !== 'daily' && collectorId ? { collectorId } : {}),
     }),
-    [tab, date, from, to, partyId, driverId]
+    [tab, date, from, to, partyId, collectorId]
   );
 
   const load = useCallback(() => {
@@ -78,7 +78,7 @@ export default function Reports() {
         title="Reports"
         subtitle={
           tab === 'handover'
-            ? 'OTP-verified cash handovers from drivers — other statuses are listed separately for audit'
+            ? 'OTP-verified cash handovers from collectors — other statuses are listed separately for audit'
             : 'Verified collections only — pending, expired and failed records are listed separately for audit'
         }
       />
@@ -113,12 +113,12 @@ export default function Reports() {
                 </select>
               </label>
             )}
-            {(tab === 'driver' || tab === 'custom' || tab === 'handover') && (
+            {(tab === 'collector' || tab === 'custom' || tab === 'handover') && (
               <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Driver</span>
-                <select className={`${inputClass} w-auto`} value={driverId} onChange={(e) => setDriverId(e.target.value)}>
-                  <option value="">All drivers</option>
-                  {drivers.map((d) => (
+                <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">Collector</span>
+                <select className={`${inputClass} w-auto`} value={collectorId} onChange={(e) => setCollectorId(e.target.value)}>
+                  <option value="">All collectors</option>
+                  {collectors.map((d) => (
                     <option key={d._id} value={d._id}>{d.name}</option>
                   ))}
                 </select>
@@ -212,7 +212,7 @@ export default function Reports() {
                             <td className="whitespace-nowrap px-4 py-2.5 text-slate-600">{formatDateTime(r.date)}</td>
                             <td className="tnum px-4 py-2.5 font-mono text-xs text-slate-500">{r.ref}</td>
                             <td className="px-4 py-2.5 font-medium text-slate-900">{r.party}</td>
-                            <td className="px-4 py-2.5 text-slate-500">{r.driver}</td>
+                            <td className="px-4 py-2.5 text-slate-500">{r.collector}</td>
                             <td className="tnum whitespace-nowrap px-4 py-2.5 text-right font-semibold">{formatINR(r.amount)}</td>
                           </tr>
                         ))}

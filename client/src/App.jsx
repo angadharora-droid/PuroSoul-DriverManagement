@@ -2,12 +2,12 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import NewCollection from './pages/driver/NewCollection';
-import Handover from './pages/driver/Handover';
-import History from './pages/driver/History';
+import NewCollection from './pages/collector/NewCollection';
+import Handover from './pages/collector/Handover';
+import History from './pages/collector/History';
 import Collections from './pages/admin/Collections';
 import Parties from './pages/admin/Parties';
-import Drivers from './pages/admin/Drivers';
+import Collectors from './pages/admin/Collectors';
 import Admins from './pages/admin/Admins';
 import Reports from './pages/admin/Reports';
 import Settings from './pages/admin/Settings';
@@ -19,7 +19,7 @@ function RequireRole({ role, children }) {
   return children;
 }
 
-const driverLinks = [
+const collectorLinks = [
   { to: '/', label: 'New collection', icon: 'banknotes', end: true },
   { to: '/handover', label: 'Handover', icon: 'arrows-right-left' },
   { to: '/history', label: 'My history', icon: 'clock' },
@@ -29,7 +29,7 @@ const adminLinks = [
   { to: '/admin', label: 'Collections', icon: 'banknotes', end: true },
   { to: '/admin/reports', label: 'Reports', icon: 'chart-bar' },
   { to: '/admin/parties', label: 'Parties', icon: 'storefront' },
-  { to: '/admin/drivers', label: 'Drivers', icon: 'truck' },
+  { to: '/admin/collectors', label: 'Collectors', icon: 'truck' },
   { to: '/admin/admins', label: 'Admins', icon: 'shield' },
   { to: '/admin/settings', label: 'Settings', icon: 'adjustments' },
 ];
@@ -43,8 +43,8 @@ export default function App() {
 
       <Route
         element={
-          <RequireRole role="driver">
-            <Layout links={driverLinks} />
+          <RequireRole role="collector">
+            <Layout links={collectorLinks} />
           </RequireRole>
         }
       >
@@ -63,7 +63,7 @@ export default function App() {
         <Route path="/admin" element={<Collections />} />
         <Route path="/admin/reports" element={<Reports />} />
         <Route path="/admin/parties" element={<Parties />} />
-        <Route path="/admin/drivers" element={<Drivers />} />
+        <Route path="/admin/collectors" element={<Collectors />} />
         <Route path="/admin/admins" element={<Admins />} />
         <Route path="/admin/settings" element={<Settings />} />
       </Route>

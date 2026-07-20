@@ -22,7 +22,7 @@ export default function Parties() {
     <div className="space-y-4">
       <PageHeader
         title="Party database"
-        subtitle="Drivers can only collect against this approved list. OTPs always go to the party's registered mobile."
+        subtitle="Collectors can only collect against this approved list. OTPs always go to the party's registered mobile."
         actions={<Button icon="plus" onClick={() => setEditing('new')}>Add party</Button>}
       />
 
@@ -88,7 +88,7 @@ export default function Parties() {
             <EmptyState
               icon="storefront"
               title={q ? 'No parties match your search' : 'No parties yet'}
-              subtitle={q ? 'Try a different name.' : 'Add the distributors your drivers collect from.'}
+              subtitle={q ? 'Try a different name.' : 'Add the distributors your collectors collect from.'}
               action={!q && <Button icon="plus" onClick={() => setEditing('new')}>Add first party</Button>}
             />
           )}
@@ -180,7 +180,7 @@ function PartyModal({ party, onClose, onSaved }) {
               onChange={(e) => setForm((f) => ({ ...f, isActive: e.target.checked }))}
               className="h-4 w-4 rounded accent-brand-700"
             />
-            Active — visible in the driver dropdown
+            Active — visible in the collector dropdown
           </label>
         )}
         <Alert>{error}</Alert>
