@@ -98,21 +98,30 @@ async function sendFast2Sms(mobile, message) {
     if (!res.ok || body.return === false) {
       throw new Error(`Fast2SMS DLT send failed: ${(body.message && String(body.message)) || res.status}`);
     }
+    logSend('dlt', message.template, body.request_id);
     return { provider: 'fast2sms', id: body.request_id };
   }
 
   // OTP route sends only the numeric code ("{code} is your verification code")
   // but is DLT-approved on Fast2SMS's side, so it reaches DND numbers 24/7.
   let out;
+  let route;
   if (message.type === 'otp') {
+    route = 'otp';
     out = await post({ route: 'otp', variables_values: String(message.vars.otp), numbers: mobile });
     // 996 = account's OTP-route website KYC not approved yet. Fall back to the
     // quick route so OTPs keep flowing; this stops triggering once KYC passes.
     if (out.body.status_code === 996) {
-      console.warn('[sms] Fast2SMS OTP route not verified yet — falling back to quick route');
+      console.warn(
+        '[sms] Fast2SMS OTP route not verified yet — falling back to quick route. ' +
+          'The quick route is promotional: credits are charged on submission but DND-registered ' +
+          'numbers never receive it. Set FAST2SMS_DLT_* to send via your approved templates.'
+      );
+      route = 'q';
       out = await post({ route: 'q', message: message.text, numbers: mobile });
     }
   } else {
+    route = 'q';
     out = await post({ route: 'q', message: message.text, numbers: mobile });
   }
 
@@ -120,7 +129,18 @@ async function sendFast2Sms(mobile, message) {
   if (!res.ok || body.return === false) {
     throw new Error(`Fast2SMS send failed: ${(body.message && String(body.message)) || res.status}`);
   }
+  logSend(route, message.template, body.request_id);
   return { provider: 'fast2sms', id: body.request_id };
+}
+
+/**
+ * Fast2SMS returns success once it *accepts* a message — delivery can still fail
+ * downstream (DND rejection on the promotional route, template mismatch on DLT).
+ * Log the route and request_id so a missing SMS can be traced with
+ * `scripts/sms-doctor.js` or the Fast2SMS delivery report.
+ */
+function logSend(route, template, requestId) {
+  console.log(`[sms] sent via route="${route}" template="${template || '-'}" request_id=${requestId || 'none'}`);
 }
 
 const providers = { console: sendConsole, msg91: sendMsg91, twilio: sendTwilio, fast2sms: sendFast2Sms };
