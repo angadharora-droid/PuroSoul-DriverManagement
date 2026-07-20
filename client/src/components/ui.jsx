@@ -176,7 +176,7 @@ export function Avatar({ name, className = 'h-8 w-8 text-xs' }) {
     .map((w) => w[0])
     .join('')
     .toUpperCase();
-  // Deterministic pastel per name so the same party/driver always gets the same color
+  // Deterministic pastel per name so the same party/collector always gets the same color
   const hues = [
     'bg-emerald-100 text-emerald-700',
     'bg-sky-100 text-sky-700',

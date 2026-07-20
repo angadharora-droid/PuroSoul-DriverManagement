@@ -2,7 +2,7 @@
  * Seeds the initial admin account (skipped if it already exists).
  *   node scripts/seed.js
  * Uses SEED_ADMIN_NAME / SEED_ADMIN_EMAIL / SEED_ADMIN_PASSWORD from .env.
- * Everything else — more admins, drivers, parties — is created from the admin panel.
+ * Everything else — more admins, collectors, parties — is created from the admin panel.
  */
 import 'dotenv/config';
 import mongoose from 'mongoose';

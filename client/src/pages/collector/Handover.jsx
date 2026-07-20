@@ -93,7 +93,7 @@ export default function Handover() {
   const selectedTotal = selectedItems.reduce((s, t) => s + t.amount, 0);
   const allSelected = items.length > 0 && selected.size === items.length;
 
-  // A handover the driver walked away from mid-OTP: still verifiable, so offer to resume it.
+  // A handover the collector walked away from mid-OTP: still verifiable, so offer to resume it.
   const activePending = history?.find(
     (h) => h.status === 'pending_otp' && new Date(h.otpExpiresAt).getTime() > Date.now()
   );

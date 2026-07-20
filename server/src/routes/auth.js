@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import Driver from '../models/Driver.js';
+import Collector from '../models/Collector.js';
 import Admin from '../models/Admin.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
 
@@ -14,17 +14,17 @@ const loginLimiter = rateLimit({
   message: { error: 'Too many login attempts — try again in a few minutes' },
 });
 
-router.post('/driver/login', loginLimiter, async (req, res) => {
+router.post('/collector/login', loginLimiter, async (req, res) => {
   const { mobile, password } = req.body || {};
   if (!mobile || !password) return res.status(400).json({ error: 'Mobile and password are required' });
 
-  const driver = await Driver.findOne({ mobile: String(mobile).trim() });
-  const ok = driver && driver.isActive && (await driver.verifyPassword(String(password)));
+  const collector = await Collector.findOne({ mobile: String(mobile).trim() });
+  const ok = collector && collector.isActive && (await collector.verifyPassword(String(password)));
   if (!ok) return res.status(401).json({ error: 'Invalid mobile number or password' });
 
   res.json({
-    token: signToken(driver, 'driver'),
-    user: { id: driver._id, name: driver.name, role: 'driver', mobile: driver.mobile },
+    token: signToken(collector, 'collector'),
+    user: { id: collector._id, name: collector.name, role: 'collector', mobile: collector.mobile },
   });
 });
 
@@ -57,8 +57,8 @@ const changePasswordLimiter = rateLimit({
   message: { error: 'Too many attempts — please wait a few minutes' },
 });
 
-/** Self-service password change for the logged-in account (driver or admin). */
-router.post('/change-password', requireAuth('driver', 'admin'), changePasswordLimiter, async (req, res) => {
+/** Self-service password change for the logged-in account (collector or admin). */
+router.post('/change-password', requireAuth('collector', 'admin'), changePasswordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current and new passwords are required' });
@@ -70,7 +70,7 @@ router.post('/change-password', requireAuth('driver', 'admin'), changePasswordLi
     return res.status(400).json({ error: 'New password must be different from the current one' });
   }
 
-  const Model = req.user.role === 'driver' ? Driver : Admin;
+  const Model = req.user.role === 'collector' ? Collector : Admin;
   const account = await Model.findById(req.user.id);
   // 400 (not 401) on a wrong current password — a 401 makes the client log out.
   if (!(await account.verifyPassword(String(currentPassword)))) {

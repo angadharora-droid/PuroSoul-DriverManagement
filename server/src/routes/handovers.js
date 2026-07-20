@@ -26,7 +26,7 @@ const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul, a unit of Centre Point Hospitality';
 const MAX_HANDOVER_TXNS = 200;
 
-// Abuse guard: at most 10 OTP sends (new + resend) per driver per 15 minutes.
+// Abuse guard: at most 10 OTP sends (new + resend) per collector per 15 minutes.
 const otpSendLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
@@ -37,23 +37,23 @@ const otpSendLimiter = rateLimit({
   message: { error: 'Too many OTP requests — please wait a few minutes before trying again' },
 });
 
-function otpMessage(code, amount, driverName, count) {
+function otpMessage(code, amount, collectorName, count) {
   const ttl = process.env.OTP_TTL_MINUTES || 5;
   // Whole chunk is one DLT variable so "1 collection" vs "3 collections" doesn't change the static text.
   const countLabel = `${count} collection${count === 1 ? '' : 's'}`;
   return {
     type: 'otp',
     template: 'handover-otp',
-    text: `${code} is your OTP for confirming receipt of ${formatINR(amount)} cash (${countLabel}) from driver ${driverName} for ${SMS_BRAND}. Share this OTP only with the driver handing over. Valid for ${ttl} minutes.`,
+    text: `${code} is your OTP for confirming receipt of ${formatINR(amount)} cash (${countLabel}) from collector ${collectorName} for ${SMS_BRAND}. Share this OTP only with the collector handing over. Valid for ${ttl} minutes.`,
     vars: { otp: code, amount: formatINR(amount) },
     // {#var#} fill order of the registered DLT template — keep in sync with the
     // portal. "Rs." stays in the template's static text; the amount keeps its
     // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
-    dltVars: [code, formatINR(amount).replace('Rs. ', ''), countLabel, driverName, String(ttl)],
+    dltVars: [code, formatINR(amount).replace('Rs. ', ''), countLabel, collectorName, String(ttl)],
   };
 }
 
-function driverView(h, extra = {}) {
+function collectorView(h, extra = {}) {
   return {
     id: h._id,
     ref: h.ref,
@@ -91,7 +91,7 @@ async function hasConflict(h) {
 }
 
 /**
- * Atomically link/unlink collections to a handover. Uses the native driver on
+ * Atomically link/unlink collections to a handover. Uses the native collector on
  * purpose: the Transaction schema blocks all query-level updates, and this
  * guarded $set is the one sanctioned path — the filter makes it race-safe
  * (a collection already claimed by another handover never matches).
@@ -110,19 +110,19 @@ function releaseTransactions(h) {
   );
 }
 
-// ---------------------------------------------------------------- driver ---
+// ---------------------------------------------------------------- collector ---
 
-/** Active admins who can receive cash (have a mobile on file). Mobile is masked for drivers. */
-router.get('/recipients', requireAuth('driver'), async (_req, res) => {
+/** Active admins who can receive cash (have a mobile on file). Mobile is masked for collectors. */
+router.get('/recipients', requireAuth('collector'), async (_req, res) => {
   const admins = await Admin.find({ isActive: true, mobile: /^\d{10}$/ }).sort({ name: 1 });
   res.json({ recipients: admins.map((a) => ({ id: a._id, name: a.name, mobile: maskMobile(a.mobile) })) });
 });
 
-/** Verified collections still in the driver's hands (not yet part of any live handover). */
-router.get('/pending-cash', requireAuth('driver'), async (req, res) => {
-  const lockedIds = await Handover.find(activeHandoverFilter({ driver: req.user.id })).distinct('transactions');
+/** Verified collections still in the collector's hands (not yet part of any live handover). */
+router.get('/pending-cash', requireAuth('collector'), async (req, res) => {
+  const lockedIds = await Handover.find(activeHandoverFilter({ collector: req.user.id })).distinct('transactions');
   const txns = await Transaction.find({
-    driver: req.user.id,
+    collector: req.user.id,
     status: 'verified',
     handover: null,
     _id: { $nin: lockedIds },
@@ -145,7 +145,7 @@ router.get('/pending-cash', requireAuth('driver'), async (req, res) => {
 });
 
 /** Start a handover: validates the selection and sends the OTP to the RECIPIENT's mobile. */
-router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
+router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   const { transactionIds, recipientId, notes } = req.body || {};
 
   const ids = [...new Set((Array.isArray(transactionIds) ? transactionIds : []).map(String))];
@@ -164,8 +164,8 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
     return res.status(400).json({ error: 'This recipient has no mobile number on file — an admin must add it first' });
   }
 
-  // Only the driver's own verified, not-yet-handed-over collections qualify.
-  const txns = await Transaction.find({ _id: { $in: ids }, driver: req.user.id, status: 'verified', handover: null });
+  // Only the collector's own verified, not-yet-handed-over collections qualify.
+  const txns = await Transaction.find({ _id: { $in: ids }, collector: req.user.id, status: 'verified', handover: null });
   if (txns.length !== ids.length) {
     return res.status(400).json({ error: 'One or more selected collections are not eligible for handover' });
   }
@@ -177,7 +177,7 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
   const totalAmount = Math.round(txns.reduce((s, t) => s + t.amount, 0) * 100) / 100;
   const code = generateOtp();
   const handover = await Handover.create({
-    driver: req.user.id,
+    collector: req.user.id,
     recipient: recipient._id,
     recipientName: recipient.name,
     transactions: ids,
@@ -187,7 +187,7 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
     otpExpiresAt: otpExpiry(),
     lastOtpSentAt: new Date(),
     status: 'pending_otp',
-    driverIp: req.ip || '',
+    collectorIp: req.ip || '',
     deviceInfo: (req.get('user-agent') || '').slice(0, 300),
   });
 
@@ -211,15 +211,15 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
   }
 
   res.status(201).json({
-    handover: driverView(handover),
+    handover: collectorView(handover),
     otpSentTo: maskMobile(recipient.mobile),
     message: `OTP sent to ${recipient.name}'s mobile — ask them for the ${OTP_LENGTH}-digit code.`,
   });
 });
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
-router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req, res) => {
-  const handover = await Handover.findOne({ _id: req.params.id, driver: req.user.id }).populate('recipient');
+router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+  const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id }).populate('recipient');
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
   // 'failed' (locked after wrong attempts) is recoverable with a fresh OTP, per policy.
   if (!['pending_otp', 'expired', 'failed'].includes(handover.status)) {
@@ -254,7 +254,7 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
   try {
     await sendSms(handover.recipient.mobile, otpMessage(code, handover.totalAmount, req.user.name, handover.transactions.length));
   } catch (err) {
-    // A failed send must not cost the driver a resend or restart the cooldown.
+    // A failed send must not cost the collector a resend or restart the cooldown.
     handover.otpResendCount -= 1;
     handover.lastOtpSentAt = prevLastOtpSentAt;
     await handover.save().catch(() => {});
@@ -262,16 +262,16 @@ router.post('/:id/resend-otp', requireAuth('driver'), otpSendLimiter, async (req
     return res.status(502).json({ error: 'Could not send OTP SMS — please try again' });
   }
 
-  res.json({ handover: driverView(handover), otpSentTo: maskMobile(handover.recipient.mobile) });
+  res.json({ handover: collectorView(handover), otpSentTo: maskMobile(handover.recipient.mobile) });
 });
 
-/** Verify the OTP the driver got verbally from the recipient. */
-router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
+/** Verify the OTP the collector got verbally from the recipient. */
+router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
   const otp = String((req.body || {}).otp || '').trim();
-  const handover = await Handover.findOne({ _id: req.params.id, driver: req.user.id });
+  const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id });
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
 
-  if (handover.status === 'verified') return res.json({ handover: driverView(handover) }); // idempotent
+  if (handover.status === 'verified') return res.json({ handover: collectorView(handover) }); // idempotent
   if (handover.status === 'cancelled') return res.status(400).json({ error: 'This handover was cancelled — start a new one' });
   if (handover.status === 'failed') {
     return res.status(400).json({ error: 'This handover is locked after too many wrong attempts — resend OTP or start again' });
@@ -281,7 +281,7 @@ router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
       handover.status = 'expired';
       await handover.save();
     }
-    return res.status(400).json({ error: 'OTP has expired — please resend', expired: true, handover: driverView(handover) });
+    return res.status(400).json({ error: 'OTP has expired — please resend', expired: true, handover: collectorView(handover) });
   }
   if (!isValidOtp(otp)) return res.status(400).json({ error: `Enter the ${OTP_LENGTH}-digit OTP` });
 
@@ -314,12 +314,12 @@ router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
   handover.verifiedAt = new Date();
   await handover.save();
 
-  res.json({ handover: driverView(handover), verified: true });
+  res.json({ handover: collectorView(handover), verified: true });
 });
 
-/** Driver abandons a pending handover, releasing its collections immediately. */
-router.post('/:id/cancel', requireAuth('driver'), async (req, res) => {
-  const handover = await Handover.findOne({ _id: req.params.id, driver: req.user.id });
+/** Collector abandons a pending handover, releasing its collections immediately. */
+router.post('/:id/cancel', requireAuth('collector'), async (req, res) => {
+  const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id });
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
   if (!['pending_otp', 'expired', 'failed'].includes(handover.status)) {
     return res.status(400).json({ error: `Cannot cancel a ${handover.status} handover` });
@@ -328,19 +328,19 @@ router.post('/:id/cancel', requireAuth('driver'), async (req, res) => {
   await handover.save();
   // Free any collections a crashed verify attempt may have claimed.
   await releaseTransactions(handover).catch(() => {});
-  res.json({ handover: driverView(handover) });
+  res.json({ handover: collectorView(handover) });
 });
 
-/** Driver's own handover history. */
-router.get('/mine', requireAuth('driver'), async (req, res) => {
+/** Collector's own handover history. */
+router.get('/mine', requireAuth('collector'), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
-  const filter = { driver: req.user.id };
+  const filter = { collector: req.user.id };
   const [items, total] = await Promise.all([
     Handover.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
     Handover.countDocuments(filter),
   ]);
-  res.json({ items: items.map((h) => driverView(h)), total, page, pages: Math.ceil(total / limit) });
+  res.json({ items: items.map((h) => collectorView(h)), total, page, pages: Math.ceil(total / limit) });
 });
 
 export default router;

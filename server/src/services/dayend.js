@@ -8,7 +8,7 @@ const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 
 /**
  * Builds the daily report for the given YYYY-MM-DD (default: today IST) and
- * emails it — HTML summary per driver + the full PDF attached — to the global
+ * emails it — HTML summary per collector + the full PDF attached — to the global
  * notification emails configured in Settings.
  */
 export async function sendDayEndReport(date = todayIST()) {
@@ -33,7 +33,7 @@ export async function sendDayEndReport(date = todayIST()) {
 
 function dayEndHtml(report) {
   const cell = 'padding:6px 12px;font-size:13px';
-  const driverRows = report.groups
+  const collectorRows = report.groups
     .map(
       (g) =>
         `<tr><td style="${cell};color:#0f172a">${g.label}</td>` +
@@ -52,14 +52,14 @@ function dayEndHtml(report) {
   return `
   <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto">
     <h2 style="color:#185997;margin-bottom:4px">${COMPANY} — Day-End Collection Report</h2>
-    <p style="color:#334155;font-size:14px">${report.periodLabel} • Verified collections only. The full report with every collection (party, time, driver, amount) is attached as PDF.</p>
+    <p style="color:#334155;font-size:14px">${report.periodLabel} • Verified collections only. The full report with every collection (party, time, collector, amount) is attached as PDF.</p>
     <table style="border-collapse:collapse;background:#eff6fc;border-radius:8px;width:100%">
       <tr>
-        <th style="${cell};color:#64748b;text-align:left">Driver</th>
+        <th style="${cell};color:#64748b;text-align:left">Collector</th>
         <th style="${cell};color:#64748b;text-align:center">Collections</th>
         <th style="${cell};color:#64748b;text-align:right">Amount</th>
       </tr>
-      ${driverRows || `<tr><td style="${cell};color:#64748b" colspan="3">No verified collections this day.</td></tr>`}
+      ${collectorRows || `<tr><td style="${cell};color:#64748b" colspan="3">No verified collections this day.</td></tr>`}
       <tr>
         <td style="${cell};color:#185997;font-weight:700">TOTAL</td>
         <td style="${cell};color:#185997;font-weight:700;text-align:center">${report.grandCount}</td>

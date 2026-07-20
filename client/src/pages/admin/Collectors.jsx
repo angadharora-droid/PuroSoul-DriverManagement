@@ -3,13 +3,13 @@ import { api } from '../../api/client';
 import { Button, Field, Input, Alert, Modal, EmptyState, Avatar, TableSkeleton, PageHeader } from '../../components/ui';
 import { useToast } from '../../components/toast';
 
-export default function Drivers() {
-  const [drivers, setDrivers] = useState(null);
-  const [editing, setEditing] = useState(null); // null | 'new' | driver
+export default function Collectors() {
+  const [collectors, setCollectors] = useState(null);
+  const [editing, setEditing] = useState(null); // null | 'new' | collector
   const [error, setError] = useState('');
 
   const load = useCallback(() => {
-    api.get('/api/drivers').then((d) => setDrivers(d.drivers)).catch((err) => setError(err.message));
+    api.get('/api/collectors').then((d) => setCollectors(d.collectors)).catch((err) => setError(err.message));
   }, []);
 
   useEffect(load, [load]);
@@ -17,14 +17,14 @@ export default function Drivers() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="Drivers"
-        subtitle="Field drivers who record cash collections on their phones"
-        actions={<Button icon="plus" onClick={() => setEditing('new')}>Add driver</Button>}
+        title="Collectors"
+        subtitle="Field collectors who record cash collections on their phones"
+        actions={<Button icon="plus" onClick={() => setEditing('new')}>Add collector</Button>}
       />
 
       {error && <Alert>{error}</Alert>}
 
-      {!drivers ? (
+      {!collectors ? (
         <TableSkeleton rows={5} cols={4} />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
@@ -39,7 +39,7 @@ export default function Drivers() {
                 </tr>
               </thead>
               <tbody>
-                {drivers.map((d) => (
+                {collectors.map((d) => (
                   <tr key={d._id} className="border-b border-slate-100 transition-colors last:border-0 hover:bg-slate-50/70">
                     <td className="px-4 py-3">
                       <span className="flex items-center gap-2.5 font-medium text-slate-900">
@@ -71,40 +71,40 @@ export default function Drivers() {
               </tbody>
             </table>
           </div>
-          {drivers.length === 0 && (
+          {collectors.length === 0 && (
             <EmptyState
               icon="truck"
-              title="No drivers yet"
-              subtitle="Add the field drivers who collect cash from parties."
-              action={<Button icon="plus" onClick={() => setEditing('new')}>Add first driver</Button>}
+              title="No collectors yet"
+              subtitle="Add the field collectors who collect cash from parties."
+              action={<Button icon="plus" onClick={() => setEditing('new')}>Add first collector</Button>}
             />
           )}
         </div>
       )}
 
-      <DriverModal driver={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
+      <CollectorModal collector={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
     </div>
   );
 }
 
-function DriverModal({ driver, onClose, onSaved }) {
+function CollectorModal({ collector, onClose, onSaved }) {
   const toast = useToast();
-  const isNew = driver === 'new';
+  const isNew = collector === 'new';
   const [form, setForm] = useState({ name: '', mobile: '', password: '', isActive: true });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!driver) return;
+    if (!collector) return;
     setError('');
     setForm(
       isNew
         ? { name: '', mobile: '', password: '', isActive: true }
-        : { name: driver.name, mobile: driver.mobile, password: '', isActive: driver.isActive }
+        : { name: collector.name, mobile: collector.mobile, password: '', isActive: collector.isActive }
     );
-  }, [driver, isNew]);
+  }, [collector, isNew]);
 
-  if (!driver) return null;
+  if (!collector) return null;
 
   async function save(e) {
     e.preventDefault();
@@ -113,9 +113,9 @@ function DriverModal({ driver, onClose, onSaved }) {
     const payload = { name: form.name.trim(), mobile: form.mobile.trim(), isActive: form.isActive };
     if (form.password) payload.password = form.password;
     try {
-      if (isNew) await api.post('/api/drivers', payload);
-      else await api.put(`/api/drivers/${driver._id}`, payload);
-      toast(isNew ? 'Driver added' : 'Driver updated');
+      if (isNew) await api.post('/api/collectors', payload);
+      else await api.put(`/api/collectors/${collector._id}`, payload);
+      toast(isNew ? 'Collector added' : 'Collector updated');
       onSaved();
     } catch (err) {
       setError(err.message);
@@ -125,12 +125,12 @@ function DriverModal({ driver, onClose, onSaved }) {
   }
 
   return (
-    <Modal open title={isNew ? 'Add driver' : `Edit ${driver.name}`} onClose={onClose}>
+    <Modal open title={isNew ? 'Add collector' : `Edit ${collector.name}`} onClose={onClose}>
       <form onSubmit={save} className="space-y-4">
-        <Field label="Driver name" required>
+        <Field label="Collector name" required>
           <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required autoFocus />
         </Field>
-        <Field label="Mobile number" required hint="Used to log in to the driver app">
+        <Field label="Mobile number" required hint="Used to log in to the collector app">
           <Input
             type="tel"
             inputMode="numeric"
@@ -164,7 +164,7 @@ function DriverModal({ driver, onClose, onSaved }) {
         <Alert>{error}</Alert>
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
-          <Button type="submit" loading={busy}>Save driver</Button>
+          <Button type="submit" loading={busy}>Save collector</Button>
         </div>
       </form>
     </Modal>

@@ -8,7 +8,7 @@ import Icon from '../components/icons';
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [role, setRole] = useState('driver');
+  const [role, setRole] = useState('collector');
   const [mobile, setMobile] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -54,13 +54,13 @@ export default function Login() {
               setError('');
             }}
             options={[
-              { value: 'driver', label: 'Driver', icon: 'truck' },
+              { value: 'collector', label: 'Collector', icon: 'truck' },
               { value: 'admin', label: 'Admin', icon: 'shield' },
             ]}
           />
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {role === 'driver' ? (
+            {role === 'collector' ? (
               <Field label="Mobile number">
                 <Input
                   type="tel"

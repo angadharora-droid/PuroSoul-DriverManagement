@@ -3,7 +3,7 @@ export function notFound(_req, res) {
 }
 
 export function errorHandler(err, _req, res, _next) {
-  // Mongo duplicate key (e.g. party name / driver mobile already exists)
+  // Mongo duplicate key (e.g. party name / collector mobile already exists)
   if (err && err.code === 11000) {
     const field = Object.keys(err.keyPattern || {})[0] || 'value';
     return res.status(409).json({ error: `A record with this ${field} already exists` });

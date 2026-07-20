@@ -25,12 +25,12 @@ router.get('/', requireAuth('admin'), async (req, res) => {
   if (format === 'csv') {
     const rows = [];
     for (const g of report.groups) {
-      for (const r of g.rows) rows.push([g.label, formatDateTime(r.date), r.ref, r.party, r.driver, r.amount.toFixed(2)]);
+      for (const r of g.rows) rows.push([g.label, formatDateTime(r.date), r.ref, r.party, r.collector, r.amount.toFixed(2)]);
       rows.push([`${g.label} — subtotal (${g.count} txns)`, '', '', '', '', g.subtotal.toFixed(2)]);
     }
     rows.push(['GRAND TOTAL', '', '', '', '', report.grandTotal.toFixed(2)]);
     const partyLabel = report.colLabels?.party || 'Party';
-    const csv = toCsv(['Group', 'Date', 'Ref', partyLabel, 'Driver', 'Amount (INR)'], rows);
+    const csv = toCsv(['Group', 'Date', 'Ref', partyLabel, 'Collector', 'Amount (INR)'], rows);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${report.type}-report-${stamp}.csv"`);
     return res.send(csv);

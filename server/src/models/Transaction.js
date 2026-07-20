@@ -19,7 +19,7 @@ const MUTABLE_AFTER_VERIFY = new Set([
 const transactionSchema = new mongoose.Schema(
   {
     party: { type: mongoose.Schema.Types.ObjectId, ref: 'Party', required: true, index: true },
-    driver: { type: mongoose.Schema.Types.ObjectId, ref: 'Driver', required: true, index: true },
+    collector: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', required: true, index: true },
     amount: {
       type: Number,
       required: [true, 'Amount is required'],
@@ -51,7 +51,7 @@ const transactionSchema = new mongoose.Schema(
       },
     ],
 
-    driverIp: { type: String, default: '' },
+    collectorIp: { type: String, default: '' },
     deviceInfo: { type: String, default: '' },
   },
   {
@@ -71,7 +71,7 @@ transactionSchema.virtual('ref').get(function () {
 });
 
 transactionSchema.index({ createdAt: -1 });
-transactionSchema.index({ driver: 1, createdAt: -1 });
+transactionSchema.index({ collector: 1, createdAt: -1 });
 transactionSchema.index({ party: 1, createdAt: -1 });
 
 transactionSchema.post('init', function () {
