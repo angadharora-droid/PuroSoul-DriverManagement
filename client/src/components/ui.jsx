@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Icon from './icons';
-import { STATUS_LABELS } from '../utils/format';
+import { STATUS_LABELS, OTP_LENGTH } from '../utils/format';
 
 export function Button({ children, variant = 'primary', loading = false, icon, className = '', disabled, ...props }) {
   const variants = {
@@ -268,10 +268,10 @@ export function SegmentedControl({ options, value, onChange, className = '' }) {
 }
 
 /**
- * Six-box OTP input backed by a single real input, so paste, backspace and
- * SMS autofill (autocomplete="one-time-code") all work natively.
+ * OTP input backed by a single real input, so paste, backspace and SMS autofill
+ * (autocomplete="one-time-code") all work natively. Renders `length` boxes.
  */
-export function OtpInput({ value, onChange, disabled = false, autoFocus = true }) {
+export function OtpInput({ value, onChange, disabled = false, autoFocus = true, length = OTP_LENGTH }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -285,21 +285,21 @@ export function OtpInput({ value, onChange, disabled = false, autoFocus = true }
         type="text"
         inputMode="numeric"
         autoComplete="one-time-code"
-        maxLength={6}
+        maxLength={length}
         value={value}
         disabled={disabled}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, length))}
         className="absolute inset-0 z-10 h-full w-full cursor-pointer text-2xl opacity-0"
-        aria-label="6-digit OTP"
+        aria-label={`${length}-digit OTP`}
       />
-      <div className="flex justify-between gap-2" aria-hidden="true">
-        {Array.from({ length: 6 }).map((_, i) => {
+      <div className="flex justify-center gap-2.5" aria-hidden="true">
+        {Array.from({ length }).map((_, i) => {
           const filled = i < value.length;
           const active = i === value.length && !disabled;
           return (
             <div
               key={i}
-              className={`tnum flex h-14 flex-1 items-center justify-center rounded-xl border-2 text-2xl font-bold transition-all duration-150 ${
+              className={`tnum flex h-14 w-14 items-center justify-center rounded-xl border-2 text-2xl font-bold transition-all duration-150 ${
                 filled
                   ? 'border-brand-600 bg-brand-50 text-brand-900'
                   : active

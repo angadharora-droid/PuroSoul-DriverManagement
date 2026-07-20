@@ -26,6 +26,9 @@ export function todayStr() {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Digits in an OTP — must match the server's OTP_LENGTH (server/src/utils/otp.js).
+export const OTP_LENGTH = 4;
+
 export const STATUS_LABELS = {
   pending_otp: 'Awaiting OTP',
   verified: 'Verified',

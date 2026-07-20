@@ -14,7 +14,9 @@ import {
   generateOtp,
   hashOtp,
   checkOtp,
+  isValidOtp,
   otpExpiry,
+  OTP_LENGTH,
   OTP_MAX_ATTEMPTS,
   OTP_MAX_RESENDS,
   OTP_RESEND_COOLDOWN_SECONDS,
@@ -35,10 +37,15 @@ const otpSendLimiter = rateLimit({
 });
 
 function otpMessage(code, amount) {
+  const ttl = process.env.OTP_TTL_MINUTES || 5;
   return {
     type: 'otp',
-    text: `${COMPANY}: ${code} is the OTP to confirm cash collection of ${formatINR(amount)}. Share it ONLY with the delivery driver present with you. Valid ${process.env.OTP_TTL_MINUTES || 5} min.`,
+    template: 'collection-otp',
+    text: `${COMPANY}: ${code} is the OTP to confirm cash collection of ${formatINR(amount)}. Share it ONLY with the delivery driver present with you. Valid ${ttl} min.`,
     vars: { otp: code, amount: formatINR(amount) },
+    // {#var#} fill order of the registered DLT template — keep in sync with the
+    // portal. "Rs." is static text in the template, so the amount var is numeric.
+    dltVars: [code, formatINR(amount).replace('Rs. ', ''), String(ttl)],
   };
 }
 
@@ -103,7 +110,7 @@ router.post('/', requireAuth('driver'), otpSendLimiter, async (req, res) => {
   res.status(201).json({
     transaction: driverView(txn),
     otpSentTo: maskMobile(party.mobile),
-    message: `OTP sent to ${party.name}'s registered mobile — ask the party for the 6-digit code.`,
+    message: `OTP sent to ${party.name}'s registered mobile — ask the party for the ${OTP_LENGTH}-digit code.`,
   });
 });
 
@@ -165,7 +172,7 @@ router.post('/:id/verify', requireAuth('driver'), async (req, res) => {
     }
     return res.status(400).json({ error: 'OTP has expired — please resend', expired: true, transaction: driverView(txn) });
   }
-  if (!/^\d{6}$/.test(otp)) return res.status(400).json({ error: 'Enter the 6-digit OTP' });
+  if (!isValidOtp(otp)) return res.status(400).json({ error: `Enter the ${OTP_LENGTH}-digit OTP` });
 
   const ok = await checkOtp(otp, txn.otpCodeHash);
   if (!ok) {
