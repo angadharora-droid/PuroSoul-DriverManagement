@@ -10,6 +10,16 @@ export function maskMobile(mobile) {
   return m.length >= 4 ? `••••••${m.slice(-4)}` : '••••';
 }
 
+/**
+ * Mask that keeps the first two digits as well ("94••••8329"), so a collector
+ * can tell a party's numbers apart in the OTP picker. Last-4 alone is not
+ * enough: some parties hold two numbers ending in the same four digits.
+ */
+export function maskMobileEnds(mobile) {
+  const m = String(mobile || '');
+  return m.length === 10 ? `${m.slice(0, 2)}••••${m.slice(-4)}` : maskMobile(m);
+}
+
 const TZ_OFFSET = process.env.APP_TZ_OFFSET || '+05:30';
 
 /** Day boundaries for a YYYY-MM-DD string in the app timezone (default IST). */

@@ -29,10 +29,11 @@ export default function Collectors() {
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-card">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[520px] text-sm">
+            <table className="w-full min-w-[620px] text-sm">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3 font-semibold">Name</th>
+                  <th className="px-4 py-3 font-semibold">Designation</th>
                   <th className="px-4 py-3 font-semibold">Mobile (login)</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
@@ -47,6 +48,7 @@ export default function Collectors() {
                         {d.name}
                       </span>
                     </td>
+                    <td className="px-4 py-3 text-slate-600">{d.designation || <span className="text-slate-400">—</span>}</td>
                     <td className="tnum px-4 py-3 font-mono text-xs text-slate-600">{d.mobile}</td>
                     <td className="px-4 py-3">
                       <span
@@ -90,7 +92,7 @@ export default function Collectors() {
 function CollectorModal({ collector, onClose, onSaved }) {
   const toast = useToast();
   const isNew = collector === 'new';
-  const [form, setForm] = useState({ name: '', mobile: '', password: '', isActive: true });
+  const [form, setForm] = useState({ name: '', designation: '', mobile: '', password: '', isActive: true });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -99,8 +101,14 @@ function CollectorModal({ collector, onClose, onSaved }) {
     setError('');
     setForm(
       isNew
-        ? { name: '', mobile: '', password: '', isActive: true }
-        : { name: collector.name, mobile: collector.mobile, password: '', isActive: collector.isActive }
+        ? { name: '', designation: '', mobile: '', password: '', isActive: true }
+        : {
+            name: collector.name,
+            designation: collector.designation || '',
+            mobile: collector.mobile,
+            password: '',
+            isActive: collector.isActive,
+          }
     );
   }, [collector, isNew]);
 
@@ -110,7 +118,12 @@ function CollectorModal({ collector, onClose, onSaved }) {
     e.preventDefault();
     setBusy(true);
     setError('');
-    const payload = { name: form.name.trim(), mobile: form.mobile.trim(), isActive: form.isActive };
+    const payload = {
+      name: form.name.trim(),
+      designation: form.designation.trim(),
+      mobile: form.mobile.trim(),
+      isActive: form.isActive,
+    };
     if (form.password) payload.password = form.password;
     try {
       if (isNew) await api.post('/api/collectors', payload);
@@ -129,6 +142,13 @@ function CollectorModal({ collector, onClose, onSaved }) {
       <form onSubmit={save} className="space-y-4">
         <Field label="Collector name" required>
           <Input value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} required autoFocus />
+        </Field>
+        <Field label="Designation" hint="e.g. Cash Collector, Field Executive">
+          <Input
+            value={form.designation}
+            onChange={(e) => setForm((f) => ({ ...f, designation: e.target.value }))}
+            maxLength={60}
+          />
         </Field>
         <Field label="Mobile number" required hint="Used to log in to the collector app">
           <Input

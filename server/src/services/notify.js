@@ -44,7 +44,7 @@ export async function notifyVerified(txn) {
   // 2) Confirmation SMS to the party
   try {
     const dateStr = formatDateTime(txn.verifiedAt);
-    await sendSms(txn.party.mobile, {
+    await sendSms(txn.otpMobile || txn.party.mobile, {
       type: 'confirmation',
       template: 'confirmation',
       text: `Cash collection of ${formatINR(txn.amount)} by ${txn.collector.name} on ${dateStr} is confirmed for ${SMS_BRAND}. Ref ${txn.ref}.`,
@@ -81,7 +81,7 @@ function emailHtml(txn) {
       ${txn.notes ? row('Notes', txn.notes) : ''}
     </table>
     <p style="color:#94a3b8;font-size:12px">Status: VERIFIED — the party acknowledged this collection by sharing the OTP sent to their registered mobile (+91 •••••• ${String(
-      txn.party.mobile
+      txn.otpMobile || txn.party.mobile
     ).slice(-4)}).</p>
   </div>`;
 }

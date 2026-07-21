@@ -44,10 +44,45 @@ function StepIndicator({ current }) {
   );
 }
 
+/**
+ * Shown only when a party has more than one number on file. Numbers arrive
+ * masked from the server; the collector sends back an index, never a number.
+ */
+function MobileChoice({ choices, value, onChange }) {
+  return (
+    <Field label="Send OTP to" hint="This party has more than one number — your choice becomes the default next time.">
+      <div className="space-y-2">
+        {choices.map((c) => {
+          const selected = c.index === value;
+          return (
+            <label
+              key={c.index}
+              className={`flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border px-3.5 py-2.5 text-sm transition-colors ${
+                selected ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name="otp-mobile"
+                checked={selected}
+                onChange={() => onChange(c.index)}
+                className="h-4 w-4 accent-brand-700"
+              />
+              <span className="tnum font-mono font-semibold">+91 {c.masked}</span>
+              {c.index === 0 && <span className="ml-auto text-xs font-semibold text-slate-400">Current default</span>}
+            </label>
+          );
+        })}
+      </div>
+    </Field>
+  );
+}
+
 export default function NewCollection() {
   const toast = useToast();
   const [step, setStep] = useState('form');
   const [party, setParty] = useState(null);
+  const [mobileIndex, setMobileIndex] = useState(0);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [txn, setTxn] = useState(null);
@@ -73,7 +108,7 @@ export default function NewCollection() {
 
     setBusy(true);
     try {
-      const data = await api.post('/api/collections', { partyId: party.value, amount: amountNumber, notes });
+      const data = await api.post('/api/collections', { partyId: party.value, amount: amountNumber, notes, mobileIndex });
       setTxn(data.transaction);
       setOtpSentTo(data.otpSentTo);
       setResendAvailableAt(Date.now() + data.transaction.resendCooldownSeconds * 1000);
@@ -124,6 +159,7 @@ export default function NewCollection() {
   function reset() {
     setStep('form');
     setParty(null);
+    setMobileIndex(0);
     setAmount('');
     setNotes('');
     setTxn(null);
@@ -256,8 +292,18 @@ export default function NewCollection() {
 
         <form onSubmit={sendOtp} className="mt-5 space-y-4">
           <Field label="Party" required hint="Select from the approved list — free typing is disabled">
-            <PartySelect value={party} onChange={setParty} />
+            <PartySelect
+              value={party}
+              onChange={(p) => {
+                setParty(p);
+                setMobileIndex(0); // always start from the party's own default
+              }}
+            />
           </Field>
+
+          {party?.mobileChoices?.length > 1 && (
+            <MobileChoice choices={party.mobileChoices} value={mobileIndex} onChange={setMobileIndex} />
+          )}
 
           <Field label="Amount collected" required>
             <div className="relative">

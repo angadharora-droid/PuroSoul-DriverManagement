@@ -4,7 +4,7 @@ import { Button, Field, Input, Alert, Modal, EmptyState, Avatar, TableSkeleton, 
 import Icon from '../../components/icons';
 import { useToast } from '../../components/toast';
 
-const emptyForm = { name: '', mobile: '', distributorCode: '', notifyEmails: '', isActive: true };
+const emptyForm = { name: '', mobile: '', altMobiles: '', distributorCode: '', notifyEmails: '', isActive: true };
 
 export default function Parties() {
   const [parties, setParties] = useState(null);
@@ -58,7 +58,14 @@ export default function Parties() {
                         {p.name}
                       </span>
                     </td>
-                    <td className="tnum px-4 py-3 font-mono text-xs text-slate-600">{p.mobile}</td>
+                    <td className="tnum px-4 py-3 font-mono text-xs text-slate-600">
+                      {p.mobile}
+                      {(p.altMobiles || []).length > 0 && (
+                        <span className="ml-1.5 font-sans text-[11px] font-semibold text-slate-400" title={p.altMobiles.join(', ')}>
+                          +{p.altMobiles.length} more
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-500">{p.distributorCode || '—'}</td>
                     <td className="max-w-56 truncate px-4 py-3 text-xs text-slate-500">{(p.notifyEmails || []).join(', ') || '—'}</td>
                     <td className="px-4 py-3">
@@ -116,6 +123,7 @@ function PartyModal({ party, onClose, onSaved }) {
         : {
             name: party.name,
             mobile: party.mobile,
+            altMobiles: (party.altMobiles || []).join(', '),
             distributorCode: party.distributorCode || '',
             notifyEmails: (party.notifyEmails || []).join(', '),
             isActive: party.isActive,
@@ -134,6 +142,7 @@ function PartyModal({ party, onClose, onSaved }) {
     const payload = {
       name: form.name.trim(),
       mobile: form.mobile.trim(),
+      altMobiles: form.altMobiles.split(/[,;\s]+/).map((m) => m.replace(/\D/g, '')).filter(Boolean),
       distributorCode: form.distributorCode.trim(),
       notifyEmails: form.notifyEmails.split(/[,;\s]+/).filter(Boolean),
       isActive: form.isActive,
@@ -164,6 +173,18 @@ function PartyModal({ party, onClose, onSaved }) {
             value={form.mobile}
             onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value.replace(/\D/g, '') }))}
             required
+          />
+        </Field>
+        <Field
+          label="Other numbers (optional)"
+          hint="Comma-separated. Collectors can pick one of these when sending the OTP — whichever they use becomes the default above."
+        >
+          <Input
+            type="tel"
+            inputMode="numeric"
+            placeholder="9876543210, 9123456780"
+            value={form.altMobiles}
+            onChange={set('altMobiles')}
           />
         </Field>
         <Field label="Distributor code (optional)">
