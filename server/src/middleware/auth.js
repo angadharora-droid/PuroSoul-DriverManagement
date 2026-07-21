@@ -39,7 +39,14 @@ export function requireAuth(...roles) {
         return res.status(401).json({ error: 'This account has been disabled' });
       }
 
-      req.user = { id: account._id.toString(), role: payload.role, name: account.name };
+      // designation is carried for collectors so the handover OTP can tell the
+      // receiver who is handing the cash over, and in what capacity.
+      req.user = {
+        id: account._id.toString(),
+        role: payload.role,
+        name: account.name,
+        designation: account.designation || '',
+      };
       next();
     } catch (err) {
       next(err);

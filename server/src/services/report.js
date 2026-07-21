@@ -124,15 +124,18 @@ export async function buildHandoverReport(query) {
       .sort({ createdAt: 1 })
       .limit(10000)
       .select('recipientName totalAmount verifiedAt createdAt collector') // skip otpCodeHash + transactions arrays
-      .populate('collector', 'name'),
+      .populate('collector', 'name designation'),
     Handover.aggregate([{ $match: match }, { $group: { _id: '$status', count: { $sum: 1 }, amount: { $sum: '$totalAmount' } } }]),
   ]);
 
   const statusCounts = Object.fromEntries(statusAgg.map((s) => [s._id, { count: s.count, amount: s.amount }]));
 
+  // Group heading carries the collector's designation so an admin reading the
+  // report sees the same "who handed this over" detail the receiver was sent.
   const groupsMap = new Map();
   for (const h of handovers) {
-    const key = h.collector?.name || '—';
+    const c = h.collector;
+    const key = !c ? '—' : c.designation ? `${c.name} — ${c.designation}` : c.name;
     if (!groupsMap.has(key)) groupsMap.set(key, []);
     groupsMap.get(key).push(h);
   }
