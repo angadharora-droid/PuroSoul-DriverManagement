@@ -24,13 +24,9 @@ router.post('/collector/login', loginLimiter, async (req, res) => {
 
   res.json({
     token: signToken(collector, 'collector'),
-    user: {
-      id: collector._id,
-      name: collector.name,
-      designation: collector.designation || '',
-      role: 'collector',
-      mobile: collector.mobile,
-    },
+    // designation is deliberately not returned: it is for the receiver (in the
+    // handover OTP) and for admins, not for the collector's own screens.
+    user: { id: collector._id, name: collector.name, role: 'collector', mobile: collector.mobile },
   });
 });
 
@@ -49,7 +45,10 @@ router.post('/admin/login', loginLimiter, async (req, res) => {
 });
 
 router.get('/me', requireAuth(), (req, res) => {
-  res.json({ user: req.user });
+  // Explicit shape — req.user also carries the collector's designation, which
+  // is meant for the receiver and for admins, never for the collector's own UI.
+  const { id, name, role } = req.user;
+  res.json({ user: { id, name, role } });
 });
 
 // Abuse guard: at most 10 password-change attempts per account per 15 minutes.

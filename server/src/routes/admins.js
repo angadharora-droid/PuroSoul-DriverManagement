@@ -10,11 +10,11 @@ router.get('/', requireAuth('admin'), async (req, res) => {
 });
 
 router.post('/', requireAuth('admin'), async (req, res) => {
-  const { name, email, mobile, password } = req.body || {};
+  const { name, designation, email, mobile, password } = req.body || {};
   if (!password || String(password).length < 6) {
     return res.status(400).json({ error: 'Password must be at least 6 characters' });
   }
-  const admin = new Admin({ name, email, mobile: mobile ? String(mobile).trim() : '' });
+  const admin = new Admin({ name, designation, email, mobile: mobile ? String(mobile).trim() : '' });
   await admin.setPassword(String(password));
   await admin.save();
   res.status(201).json({ admin });

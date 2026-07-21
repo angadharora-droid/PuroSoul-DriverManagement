@@ -37,7 +37,32 @@ const otpSendLimiter = rateLimit({
   message: { error: 'Too many OTP requests — please wait a few minutes before trying again' },
 });
 
-function otpMessage(code, amount, collectorName, count) {
+/**
+ * How the collector is named to the receiver in the OTP SMS: "Name (Designation)".
+ * It fills the collector slot the template already has, so the static text is
+ * unchanged and no DLT re-registration is needed.
+ */
+function collectorLabel({ name, designation } = {}) {
+  const clean = (s) => String(s || '').replace(/\|/g, ' ').trim(); // '|' separates DLT vars
+  const n = clean(name);
+  const d = clean(designation);
+  return d ? `${n} (${d})` : n;
+}
+
+/**
+ * DLT registers a maximum length per {#var#}; 30 is the common default and an
+ * over-long value gets the send rejected. Only the template variable is capped
+ * — the readable message body has no such limit — and it degrades to the bare
+ * name rather than a truncated half-word.
+ */
+const DLT_VAR_MAX = 30;
+function dltSafe(label, fallback) {
+  if (label.length <= DLT_VAR_MAX) return label;
+  return String(fallback || '').replace(/\|/g, ' ').trim().slice(0, DLT_VAR_MAX);
+}
+
+function otpMessage(code, amount, collector, count) {
+  const collectorName = collectorLabel(collector);
   const ttl = process.env.OTP_TTL_MINUTES || 5;
   // Whole chunk is one DLT variable so "1 collection" vs "3 collections" doesn't change the static text.
   const countLabel = `${count} collection${count === 1 ? '' : 's'}`;
@@ -49,7 +74,7 @@ function otpMessage(code, amount, collectorName, count) {
     // {#var#} fill order of the registered DLT template — keep in sync with the
     // portal. "Rs." stays in the template's static text; the amount keeps its
     // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
-    dltVars: [code, formatINR(amount).replace('Rs. ', ''), countLabel, collectorName, String(ttl)],
+    dltVars: [code, formatINR(amount).replace('Rs. ', ''), countLabel, dltSafe(collectorName, collector?.name), String(ttl)],
   };
 }
 
@@ -209,7 +234,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   }
 
   try {
-    await sendSms(recipient.mobile, otpMessage(code, totalAmount, req.user.name, ids.length));
+    await sendSms(recipient.mobile, otpMessage(code, totalAmount, req.user, ids.length));
   } catch (err) {
     handover.status = 'failed';
     handover.notifyError = `otp-sms: ${err.message}`;
@@ -260,7 +285,10 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
   await handover.save();
 
   try {
-    await sendSms(handover.recipient.mobile, otpMessage(code, handover.totalAmount, req.user.name, handover.transactions.length));
+    await sendSms(
+      handover.recipient.mobile,
+      otpMessage(code, handover.totalAmount, req.user, handover.transactions.length)
+    );
   } catch (err) {
     // A failed send must not cost the collector a resend or restart the cooldown.
     handover.otpResendCount -= 1;
