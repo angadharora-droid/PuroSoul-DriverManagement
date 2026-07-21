@@ -5,6 +5,7 @@ import { connectDb } from './config/db.js';
 import authRoutes from './routes/auth.js';
 import partyRoutes from './routes/parties.js';
 import collectorRoutes from './routes/collectors.js';
+import receiverRoutes from './routes/receivers.js';
 import adminRoutes from './routes/admins.js';
 import collectionRoutes from './routes/collections.js';
 import handoverRoutes from './routes/handovers.js';
@@ -28,6 +29,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'purosoul-ca
 app.use('/api/auth', authRoutes);
 app.use('/api/parties', partyRoutes);
 app.use('/api/collectors', collectorRoutes);
+app.use('/api/receivers', receiverRoutes);
 app.use('/api/admins', adminRoutes);
 app.use('/api/collections', collectionRoutes);
 app.use('/api/handovers', handoverRoutes);

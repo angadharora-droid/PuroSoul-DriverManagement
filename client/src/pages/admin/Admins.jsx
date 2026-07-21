@@ -35,7 +35,7 @@ export default function Admins() {
                 <tr className="border-b border-slate-200 bg-slate-50/80 text-left text-[11px] uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3 font-semibold">Name</th>
                   <th className="px-4 py-3 font-semibold">Email (login)</th>
-                  <th className="px-4 py-3 font-semibold">Mobile (handover OTP)</th>
+                  <th className="px-4 py-3 font-semibold">Mobile</th>
                   <th className="px-4 py-3 font-semibold">Status</th>
                   <th className="px-4 py-3"><span className="sr-only">Actions</span></th>
                 </tr>
@@ -136,7 +136,7 @@ function AdminModal({ admin, onClose, onSaved }) {
             required
           />
         </Field>
-        <Field label="Mobile (optional)" hint="10-digit number — needed to receive cash handover OTPs from collectors">
+        <Field label="Mobile (optional)" hint="10-digit contact number. To receive cash handovers, add the person on the Receivers page.">
           <Input
             type="tel"
             inputMode="numeric"
