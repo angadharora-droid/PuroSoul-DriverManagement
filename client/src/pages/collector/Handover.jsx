@@ -442,14 +442,16 @@ export default function Handover() {
                 required
                 hint={
                   recipients.length === 0
-                    ? 'No recipients available — an admin must add their mobile number on the Admins page first'
+                    ? 'No receivers available — an admin must add them on the Receivers page first'
                     : "The OTP goes to this person's mobile — they must be with you"
                 }
               >
                 <select className={inputClass} value={recipientId} onChange={(e) => setRecipientId(e.target.value)} required>
-                  <option value="">Select recipient…</option>
+                  <option value="">Select receiver…</option>
                   {recipients.map((r) => (
-                    <option key={r.id} value={r.id}>{r.name} ({r.mobile})</option>
+                    <option key={r.id} value={r.id}>
+                      {r.name}{r.designation ? ` — ${r.designation}` : ''} ({r.mobile})
+                    </option>
                   ))}
                 </select>
               </Field>

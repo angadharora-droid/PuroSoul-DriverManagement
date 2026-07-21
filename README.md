@@ -50,10 +50,10 @@ With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printe
 
 ## The handover flow
 
-After collecting, the collector deposits the cash with an admin (manager/cashier) — verified by the same OTP pattern, but in reverse:
+After collecting, the collector deposits the cash with a **receiver** (accounts, plant, dispatch) — verified by the same OTP pattern, but in reverse:
 
 1. Collector → **Handover** tab. The app lists every verified collection still in the collector's hands (not yet part of a handover), with a running total.
-2. Collector ticks the collections being handed over, selects the recipient (any active admin with a mobile number on file — set it on the **Admins** page), and taps **Send OTP to recipient**.
+2. Collector ticks the collections being handed over, selects the recipient (any active receiver — managed on the **Receivers** page), and taps **Send OTP to recipient**.
 3. The OTP goes to the **recipient's** mobile. The recipient counts the cash and tells the collector the code; the collector enters it. Same limits as collections (5-min expiry, 3 attempts, 3 resends, rate-limited).
 4. On success the handover is `verified` and **immutable**, each included collection is linked to it (so it can never be handed over twice), and the record appears in the **Reports → Handovers** tab. A pending handover can be cancelled by the collector, which releases its collections immediately.
 
@@ -63,7 +63,8 @@ After collecting, the collector deposits the cash with an admin (manager/cashier
 - **Reports** — Daily (grouped by collector, grand total), By Party, By Collector (with per-party breakdown), Handovers (grouped by collector with per-recipient breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit. A **day-end email** with the daily report PDF (every collection with party, time, collector and amount) goes to the global notification emails automatically at `DAY_END_REPORT_TIME` (IST) — or on demand via the "Email report" button on the Daily tab.
 - **Parties** — add/edit/deactivate, registered mobile, per-party notification emails.
 - **Collectors** — add/edit/deactivate, password resets.
-- **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional mobile number (required for that admin to receive cash handover OTPs). You cannot deactivate your own account or the last active admin.
+- **Receivers** — the staff who take cash off collectors (name, designation, mobile). They have no login and no panel access; the mobile is where the handover OTP goes. Deactivate to remove someone from the collector's recipient dropdown without touching past handovers.
+- **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional contact mobile. You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
 
 ## DLT SMS templates

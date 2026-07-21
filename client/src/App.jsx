@@ -8,6 +8,7 @@ import History from './pages/collector/History';
 import Collections from './pages/admin/Collections';
 import Parties from './pages/admin/Parties';
 import Collectors from './pages/admin/Collectors';
+import Receivers from './pages/admin/Receivers';
 import Admins from './pages/admin/Admins';
 import Reports from './pages/admin/Reports';
 import Settings from './pages/admin/Settings';
@@ -30,6 +31,7 @@ const adminLinks = [
   { to: '/admin/reports', label: 'Reports', icon: 'chart-bar' },
   { to: '/admin/parties', label: 'Parties', icon: 'storefront' },
   { to: '/admin/collectors', label: 'Collectors', icon: 'truck' },
+  { to: '/admin/receivers', label: 'Receivers', icon: 'inbox' },
   { to: '/admin/admins', label: 'Admins', icon: 'shield' },
   { to: '/admin/settings', label: 'Settings', icon: 'adjustments' },
 ];
@@ -64,6 +66,7 @@ export default function App() {
         <Route path="/admin/reports" element={<Reports />} />
         <Route path="/admin/parties" element={<Parties />} />
         <Route path="/admin/collectors" element={<Collectors />} />
+        <Route path="/admin/receivers" element={<Receivers />} />
         <Route path="/admin/admins" element={<Admins />} />
         <Route path="/admin/settings" element={<Settings />} />
       </Route>

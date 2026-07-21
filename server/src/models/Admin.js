@@ -12,7 +12,7 @@ const adminSchema = new mongoose.Schema(
       lowercase: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, 'Invalid email address'],
     },
-    // Optional — required only to receive cash handover OTPs from collectors.
+    // Optional contact number. Cash handovers go to Receivers, not admins.
     mobile: {
       type: String,
       trim: true,

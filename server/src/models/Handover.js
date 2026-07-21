@@ -3,18 +3,20 @@ import mongoose from 'mongoose';
 export const HANDOVER_STATUSES = ['pending_otp', 'verified', 'expired', 'failed', 'cancelled'];
 
 /**
- * A handover is the collector passing collected cash to an admin (manager/cashier),
- * confirmed by an OTP sent to the RECIPIENT's mobile. Like transactions, a
- * verified handover becomes immutable except for notification bookkeeping.
+ * A handover is the collector passing collected cash to a receiver (accounts,
+ * plant, dispatch), confirmed by an OTP sent to the RECIPIENT's mobile. Like
+ * transactions, a verified handover becomes immutable except for notification
+ * bookkeeping.
  */
 const MUTABLE_AFTER_VERIFY = new Set(['notifyError', 'updatedAt']);
 
 const handoverSchema = new mongoose.Schema(
   {
     collector: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', required: true, index: true },
-    recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'Admin', required: true, index: true },
-    // Snapshot so the record stays readable even if the admin is renamed/removed.
+    recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'Receiver', required: true, index: true },
+    // Snapshots so the record stays readable even if the receiver is renamed/removed.
     recipientName: { type: String, required: true, trim: true },
+    recipientDesignation: { type: String, trim: true, default: '' },
 
     transactions: {
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Transaction' }],

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
-import Admin from '../models/Admin.js';
+import Receiver from '../models/Receiver.js';
 import Transaction from '../models/Transaction.js';
 import Handover from '../models/Handover.js';
 import { requireAuth } from '../middleware/auth.js';
@@ -67,7 +67,7 @@ function collectorView(h, extra = {}) {
     resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     verifiedAt: h.verifiedAt,
     createdAt: h.createdAt,
-    recipient: { id: h.recipient?._id || h.recipient, name: h.recipientName },
+    recipient: { id: h.recipient?._id || h.recipient, name: h.recipientName, designation: h.recipientDesignation },
     ...extra,
   };
 }
@@ -112,10 +112,17 @@ function releaseTransactions(h) {
 
 // ---------------------------------------------------------------- collector ---
 
-/** Active admins who can receive cash (have a mobile on file). Mobile is masked for collectors. */
+/** Active receivers who can take cash. Mobile is masked for collectors. */
 router.get('/recipients', requireAuth('collector'), async (_req, res) => {
-  const admins = await Admin.find({ isActive: true, mobile: /^\d{10}$/ }).sort({ name: 1 });
-  res.json({ recipients: admins.map((a) => ({ id: a._id, name: a.name, mobile: maskMobile(a.mobile) })) });
+  const receivers = await Receiver.find({ isActive: true }).sort({ name: 1 });
+  res.json({
+    recipients: receivers.map((r) => ({
+      id: r._id,
+      name: r.name,
+      designation: r.designation,
+      mobile: maskMobile(r.mobile),
+    })),
+  });
 });
 
 /** Verified collections still in the collector's hands (not yet part of any live handover). */
@@ -158,10 +165,10 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   if (!mongoose.isValidObjectId(recipientId)) {
     return res.status(400).json({ error: 'Please select who is receiving the cash' });
   }
-  const recipient = await Admin.findOne({ _id: recipientId, isActive: true });
-  if (!recipient) return res.status(400).json({ error: 'Selected recipient is not an active admin' });
+  const recipient = await Receiver.findOne({ _id: recipientId, isActive: true });
+  if (!recipient) return res.status(400).json({ error: 'Selected recipient is not an active receiver' });
   if (!/^\d{10}$/.test(recipient.mobile || '')) {
-    return res.status(400).json({ error: 'This recipient has no mobile number on file — an admin must add it first' });
+    return res.status(400).json({ error: 'This receiver has no mobile number on file — an admin must add it first' });
   }
 
   // Only the collector's own verified, not-yet-handed-over collections qualify.
@@ -180,6 +187,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
     collector: req.user.id,
     recipient: recipient._id,
     recipientName: recipient.name,
+    recipientDesignation: recipient.designation || '',
     transactions: ids,
     totalAmount,
     notes: notes ? String(notes).slice(0, 500) : '',
@@ -236,9 +244,9 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
   if (await hasConflict(handover)) {
     return res.status(409).json({ error: 'Some collections in this handover were handed over separately — please start a new handover' });
   }
-  // The recipient may have been deactivated or lost their mobile since the handover started.
+  // The receiver may have been deactivated or lost their mobile since the handover started.
   if (!handover.recipient?.isActive || !/^\d{10}$/.test(handover.recipient.mobile || '')) {
-    return res.status(409).json({ error: 'The recipient can no longer receive OTPs — please cancel and start a new handover' });
+    return res.status(409).json({ error: 'The receiver can no longer receive OTPs — please cancel and start a new handover' });
   }
 
   const prevLastOtpSentAt = handover.lastOtpSentAt;
