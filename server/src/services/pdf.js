@@ -45,7 +45,9 @@ export function receiptPdf(txn) {
 
   const rows = [
     ['Party', txn.party?.name || '—'],
-    ['Party mobile', txn.party?.mobile ? `+91 ${txn.party.mobile}` : '—'],
+    // The number the OTP actually went to — not the party's current default,
+    // which may have been switched after this collection was verified.
+    ['Party mobile', txn.otpMobile || txn.party?.mobile ? `+91 ${txn.otpMobile || txn.party.mobile}` : '—'],
     ['Collected by (collector)', txn.collector?.name || '—'],
     ['Amount collected', formatINR(txn.amount)],
     ['Collected on', formatDateTime(txn.createdAt)],

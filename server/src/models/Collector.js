@@ -4,6 +4,7 @@ import bcrypt from 'bcryptjs';
 const collectorSchema = new mongoose.Schema(
   {
     name: { type: String, required: [true, 'Collector name is required'], trim: true },
+    designation: { type: String, trim: true, default: '', maxlength: 60 },
     mobile: {
       type: String,
       required: [true, 'Collector mobile is required'],

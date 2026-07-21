@@ -27,6 +27,11 @@ const transactionSchema = new mongoose.Schema(
     },
     notes: { type: String, trim: true, default: '', maxlength: 500 },
 
+    // Which of the party's numbers this OTP was sent to. Recorded per
+    // transaction so resends and the receipt stay true even if the party's
+    // default number is changed later.
+    otpMobile: { type: String, default: '', trim: true },
+
     otpCodeHash: { type: String, required: true },
     otpExpiresAt: { type: Date, required: true },
     otpAttempts: { type: Number, default: 0 },

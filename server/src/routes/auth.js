@@ -24,7 +24,13 @@ router.post('/collector/login', loginLimiter, async (req, res) => {
 
   res.json({
     token: signToken(collector, 'collector'),
-    user: { id: collector._id, name: collector.name, role: 'collector', mobile: collector.mobile },
+    user: {
+      id: collector._id,
+      name: collector.name,
+      designation: collector.designation || '',
+      role: 'collector',
+      mobile: collector.mobile,
+    },
   });
 });
 

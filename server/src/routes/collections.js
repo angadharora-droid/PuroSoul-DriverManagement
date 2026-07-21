@@ -75,12 +75,21 @@ function collectorView(txn, extra = {}) {
 
 /** Start a collection: validates the party against the DB and sends the OTP to the PARTY's mobile. */
 router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
-  const { partyId, amount, notes } = req.body || {};
+  const { partyId, amount, notes, mobileIndex } = req.body || {};
 
   // Backend re-validation: the party must exist in the approved database and be active.
   if (!mongoose.isValidObjectId(partyId)) return res.status(400).json({ error: 'Please select a party from the list' });
   const party = await Party.findOne({ _id: partyId, isActive: true });
   if (!party) return res.status(400).json({ error: 'Selected party is not in the approved list' });
+
+  // The collector only ever sends an index into the party's own numbers — never
+  // a number itself, so a collection can't be diverted to an arbitrary phone.
+  const numbers = party.otpNumbers();
+  const idx = mobileIndex === undefined || mobileIndex === null ? 0 : Number(mobileIndex);
+  if (!Number.isInteger(idx) || idx < 0 || idx >= numbers.length) {
+    return res.status(400).json({ error: 'Please choose which of the party’s numbers should receive the OTP' });
+  }
+  const otpMobile = numbers[idx];
 
   const amt = Number(amount);
   if (!Number.isFinite(amt) || amt <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
@@ -92,6 +101,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
     collector: req.user.id,
     amount: Math.round(amt * 100) / 100,
     notes: notes ? String(notes).slice(0, 500) : '',
+    otpMobile,
     otpCodeHash: await hashOtp(code),
     otpExpiresAt: otpExpiry(),
     lastOtpSentAt: new Date(),
@@ -101,7 +111,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   });
 
   try {
-    await sendSms(party.mobile, otpMessage(code, amt));
+    await sendSms(otpMobile, otpMessage(code, amt));
   } catch (err) {
     txn.status = 'failed';
     txn.notifyError = `otp-sms: ${err.message}`;
@@ -110,10 +120,18 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
     return res.status(502).json({ error: 'Could not send OTP SMS to the party — please try again' });
   }
 
+  // The choice sticks only once it has actually worked: the number that
+  // received an OTP becomes the party's default for every collector next time.
+  if (idx !== 0) {
+    party.mobile = otpMobile;
+    party.altMobiles = numbers.filter((_, i) => i !== idx);
+    await party.save().catch((err) => console.error('[party] could not persist default mobile:', err.message));
+  }
+
   await txn.populate('party', 'name');
   res.status(201).json({
     transaction: collectorView(txn),
-    otpSentTo: maskMobile(party.mobile),
+    otpSentTo: maskMobile(otpMobile),
     message: `OTP sent to ${party.name}'s registered mobile — ask the party for the ${OTP_LENGTH}-digit code.`,
   });
 });
@@ -145,8 +163,11 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
   txn.status = 'pending_otp';
   await txn.save();
 
+  // Always resend to the number the first OTP went to, even if the party's
+  // default has changed since (another collector may have switched it).
+  const resendTo = txn.otpMobile || txn.party.mobile;
   try {
-    await sendSms(txn.party.mobile, otpMessage(code, txn.amount));
+    await sendSms(resendTo, otpMessage(code, txn.amount));
   } catch (err) {
     // A failed send must not cost the collector a resend or restart the cooldown.
     txn.otpResendCount -= 1;
@@ -156,7 +177,7 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
     return res.status(502).json({ error: 'Could not send OTP SMS — please try again' });
   }
 
-  res.json({ transaction: collectorView(txn), otpSentTo: maskMobile(txn.party.mobile) });
+  res.json({ transaction: collectorView(txn), otpSentTo: maskMobile(resendTo) });
 });
 
 /** Verify the OTP the collector got verbally from the party. */

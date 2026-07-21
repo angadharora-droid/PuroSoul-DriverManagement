@@ -19,6 +19,8 @@ export default function PartySelect({ value, onChange, autoFocus = false }) {
           data.parties.map((p) => ({
             value: p._id,
             label: p.distributorCode ? `${p.name} (${p.distributorCode})` : p.name,
+            // Masked only — the raw numbers never reach the client.
+            mobileChoices: p.mobileChoices || [],
           }))
         )
       )
