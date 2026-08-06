@@ -160,14 +160,14 @@ function CollectorModal({ collector, onClose, onSaved }) {
             required
           />
         </Field>
-        <Field label={isNew ? 'Password' : 'Reset password (leave blank to keep current)'} required={isNew} hint="Minimum 6 characters">
+        <Field label={isNew ? 'Password' : 'Reset password (leave blank to keep current)'} required={isNew} hint="Minimum 8 characters">
           <Input
             type="password"
             autoComplete="new-password"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             required={isNew}
-            minLength={6}
+            minLength={8}
           />
         </Field>
         {!isNew && (

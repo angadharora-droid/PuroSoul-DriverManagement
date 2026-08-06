@@ -64,7 +64,7 @@ After collecting, the collector deposits the cash with a **receiver** (accounts,
 - **Parties** — add/edit/deactivate, registered mobile, per-party notification emails.
 - **Collectors** — add/edit/deactivate, password resets.
 - **Receivers** — the staff who take cash off collectors (name, designation, mobile). They have no login and no panel access; the mobile is where the handover OTP goes. Deactivate to remove someone from the collector's recipient dropdown without touching past handovers.
-- **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional contact mobile. You cannot deactivate your own account or the last active admin.
+- **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional contact mobile (which admins can also log in with — country code and formatting tolerated). Admin passwords may be a 4- or 6-digit PIN or a normal 8+ character password; all other roles need 8+ characters. You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
 
 ## DLT SMS templates

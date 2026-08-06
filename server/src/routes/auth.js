@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import Collector from '../models/Collector.js';
 import Admin from '../models/Admin.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
+import { passwordPolicyError } from '../utils/password.js';
 
 const router = Router();
 
@@ -31,12 +32,24 @@ router.post('/collector/login', loginLimiter, async (req, res) => {
 });
 
 router.post('/admin/login', loginLimiter, async (req, res) => {
-  const { email, password } = req.body || {};
-  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
+  const { identifier, email, password } = req.body || {};
+  const rawId = identifier ?? email; // `email` accepted for older clients
+  if (!rawId || !password) return res.status(400).json({ error: 'Email/phone and password are required' });
 
-  const admin = await Admin.findOne({ email: String(email).trim().toLowerCase() });
+  const raw = String(rawId).trim();
+  let admin = null;
+  if (raw.includes('@')) {
+    admin = await Admin.findOne({ email: raw.toLowerCase() });
+  } else {
+    // Phone sign-in is admins-only. Compare the last 10 digits so formatting
+    // and a country code ("+91 98765-43210") still match a stored mobile. The
+    // length guard also keeps a digit-less identifier from matching the
+    // schema's default empty mobile.
+    const digits = raw.replace(/\D/g, '');
+    if (digits.length >= 10) admin = await Admin.findOne({ mobile: digits.slice(-10) });
+  }
   const ok = admin && admin.isActive && (await admin.verifyPassword(String(password)));
-  if (!ok) return res.status(401).json({ error: 'Invalid email or password' });
+  if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
 
   res.json({
     token: signToken(admin, 'admin'),
@@ -68,9 +81,8 @@ router.post('/change-password', requireAuth('collector', 'admin'), changePasswor
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current and new passwords are required' });
   }
-  if (String(newPassword).length < 6) {
-    return res.status(400).json({ error: 'New password must be at least 6 characters' });
-  }
+  const policyError = passwordPolicyError(newPassword, req.user.role);
+  if (policyError) return res.status(400).json({ error: policyError });
   if (String(newPassword) === String(currentPassword)) {
     return res.status(400).json({ error: 'New password must be different from the current one' });
   }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Collector from '../models/Collector.js';
 import { requireAuth } from '../middleware/auth.js';
+import { passwordPolicyError } from '../utils/password.js';
 
 const router = Router();
 
@@ -13,9 +14,9 @@ router.get('/', requireAuth('admin'), async (req, res) => {
 
 router.post('/', requireAuth('admin'), async (req, res) => {
   const { name, designation, mobile, password } = req.body || {};
-  if (!password || String(password).length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+  const policyError = passwordPolicyError(password, 'collector');
+  if (policyError) return res.status(400).json({ error: policyError });
   const collector = new Collector({ name, designation, mobile });
   await collector.setPassword(String(password));
   await collector.save();
@@ -32,7 +33,8 @@ router.put('/:id', requireAuth('admin'), async (req, res) => {
   if (mobile !== undefined) collector.mobile = mobile;
   if (isActive !== undefined) collector.isActive = Boolean(isActive);
   if (password) {
-    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const policyError = passwordPolicyError(password, 'collector');
+    if (policyError) return res.status(400).json({ error: policyError });
     await collector.setPassword(String(password));
   }
 
