@@ -10,7 +10,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [role, setRole] = useState('collector');
   const [mobile, setMobile] = useState('');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
@@ -21,7 +21,7 @@ export default function Login() {
     setError('');
     setBusy(true);
     try {
-      const user = await login(role, role === 'admin' ? { email, password } : { mobile, password });
+      const user = await login(role, role === 'admin' ? { identifier, password } : { mobile, password });
       navigate(user.role === 'admin' ? '/admin' : '/', { replace: true });
     } catch (err) {
       setError(err.message);
@@ -75,8 +75,16 @@ export default function Login() {
                 />
               </Field>
             ) : (
-              <Field label="Email">
-                <Input type="email" autoComplete="email" placeholder="admin@company.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
+              <Field label="Email or phone number" hint="Phone number sign-in is for admins only">
+                <Input
+                  type="text"
+                  autoComplete="username"
+                  placeholder="admin@company.com or 9876543210"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  required
+                  autoFocus
+                />
               </Field>
             )}
             <Field label="Password">

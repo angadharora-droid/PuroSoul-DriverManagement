@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Admin from '../models/Admin.js';
 import { requireAuth } from '../middleware/auth.js';
+import { passwordPolicyError } from '../utils/password.js';
 
 const router = Router();
 
@@ -11,9 +12,9 @@ router.get('/', requireAuth('admin'), async (req, res) => {
 
 router.post('/', requireAuth('admin'), async (req, res) => {
   const { name, designation, email, mobile, password } = req.body || {};
-  if (!password || String(password).length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  }
+  if (!password) return res.status(400).json({ error: 'Password is required' });
+  const policyError = passwordPolicyError(password, 'admin');
+  if (policyError) return res.status(400).json({ error: policyError });
   const admin = new Admin({ name, designation, email, mobile: mobile ? String(mobile).trim() : '' });
   await admin.setPassword(String(password));
   await admin.save();
@@ -40,7 +41,8 @@ router.put('/:id', requireAuth('admin'), async (req, res) => {
     admin.isActive = active;
   }
   if (password) {
-    if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const policyError = passwordPolicyError(password, 'admin');
+    if (policyError) return res.status(400).json({ error: policyError });
     await admin.setPassword(String(password));
   }
 

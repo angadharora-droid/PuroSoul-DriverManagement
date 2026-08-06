@@ -3,6 +3,7 @@ import { api } from '../../api/client';
 import { Button, Field, Input, Alert, Modal, EmptyState, Avatar, TableSkeleton, PageHeader } from '../../components/ui';
 import { useToast } from '../../components/toast';
 import { useAuth } from '../../context/AuthContext';
+import { passwordPolicyError, ADMIN_PASSWORD_HINT } from '../../utils/password';
 
 export default function Admins() {
   const [admins, setAdmins] = useState(null);
@@ -105,6 +106,10 @@ function AdminModal({ admin, onClose, onSaved }) {
 
   async function save(e) {
     e.preventDefault();
+    if (form.password) {
+      const pwdError = passwordPolicyError(form.password, true);
+      if (pwdError) return setError(pwdError);
+    }
     setBusy(true);
     setError('');
     const payload = { name: form.name.trim(), email: form.email.trim(), mobile: form.mobile.trim(), isActive: form.isActive };
@@ -136,7 +141,7 @@ function AdminModal({ admin, onClose, onSaved }) {
             required
           />
         </Field>
-        <Field label="Mobile (optional)" hint="10-digit contact number. To receive cash handovers, add the person on the Receivers page.">
+        <Field label="Mobile (optional)" hint="10-digit number — admins can also log in with it. To receive cash handovers, add the person on the Receivers page.">
           <Input
             type="tel"
             inputMode="numeric"
@@ -148,14 +153,13 @@ function AdminModal({ admin, onClose, onSaved }) {
             onChange={(e) => setForm((f) => ({ ...f, mobile: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
           />
         </Field>
-        <Field label={isNew ? 'Password' : 'Reset password (leave blank to keep current)'} required={isNew} hint="Minimum 6 characters">
+        <Field label={isNew ? 'Password' : 'Reset password (leave blank to keep current)'} required={isNew} hint={ADMIN_PASSWORD_HINT}>
           <Input
             type="password"
             autoComplete="new-password"
             value={form.password}
             onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
             required={isNew}
-            minLength={6}
           />
         </Field>
         {!isNew && !isSelf && (
