@@ -9,7 +9,8 @@
     "start": "node src/index.js",
     "seed": "node scripts/seed.js",
     "smoke": "node scripts/smoke.js",
-    "sms-doctor": "node scripts/sms-doctor.js"
+    "sms-doctor": "node scripts/sms-doctor.js",
+    "email-doctor": "node scripts/email-doctor.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

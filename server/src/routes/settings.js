@@ -49,7 +49,8 @@ router.post('/day-end-report', requireAuth('admin'), async (req, res) => {
     res.json(result);
   } catch (err) {
     console.error('[day-end] manual send failed:', err.message);
-    res.status(502).json({ error: 'Could not send the day-end report — please try again' });
+    // Admin-only endpoint: surface the real SMTP/build error so it can be fixed.
+    res.status(502).json({ error: `Could not send the day-end report — ${err.message}` });
   }
 });
 
