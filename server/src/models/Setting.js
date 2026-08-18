@@ -5,7 +5,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const settingSchema = new mongoose.Schema(
   {
     key: { type: String, unique: true, default: 'global' },
-    // Every verified collection is mailed to these addresses in addition to the party's notifyEmails.
+    // Every verified collection (in addition to the party's notifyEmails), every
+    // verified handover, and the day-end report are mailed to these addresses.
     globalNotifyEmails: {
       type: [String],
       default: [],
