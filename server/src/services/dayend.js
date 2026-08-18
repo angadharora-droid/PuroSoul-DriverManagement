@@ -118,38 +118,50 @@ function dayEndHtml(report, handovers) {
   </div>`;
 }
 
+let dayEndTimer = null;
+
 /**
- * Auto-send the day-end report every day at DAY_END_REPORT_TIME (HH:MM, 24h,
- * IST). Leave the variable empty to disable. IST has no DST, so a fixed +05:30
- * offset and 24h steps are exact.
+ * (Re)schedule the automatic day-end report. The time comes from Settings
+ * (admin-editable, HH:MM 24h IST) and falls back to the DAY_END_REPORT_TIME
+ * env variable when never set; empty disables it. Called at startup and again
+ * whenever the admin saves Settings, so changes apply without a restart. IST
+ * has no DST, so a fixed +05:30 offset and 24h steps are exact.
  */
-export function scheduleDayEndReport() {
-  const time = (process.env.DAY_END_REPORT_TIME || '').trim();
-  if (!time) return;
+export async function scheduleDayEndReport() {
+  clearTimeout(dayEndTimer);
+
+  let stored;
+  try {
+    stored = (await getGlobalSettings()).dayEndReportTime;
+  } catch {
+    stored = undefined; // DB hiccup — fall back to the env default below
+  }
+  const time = (stored ?? process.env.DAY_END_REPORT_TIME ?? '').trim();
+  if (!time) {
+    console.log('[day-end] automatic report disabled (no time configured)');
+    return;
+  }
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(time);
   if (!m) {
-    console.warn(`[day-end] invalid DAY_END_REPORT_TIME "${time}" — expected HH:MM (24h, IST); auto-report disabled`);
+    console.warn(`[day-end] invalid time "${time}" — expected HH:MM (24h, IST); auto-report disabled`);
     return;
   }
   const [h, min] = [Number(m[1]), Number(m[2])];
 
-  const schedule = () => {
-    let next = new Date(`${todayIST()}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00+05:30`).getTime();
-    if (next <= Date.now()) next += 24 * 60 * 60 * 1000;
-    setTimeout(async () => {
-      try {
-        const result = await sendDayEndReport();
-        console.log(
-          result.sent
-            ? `[day-end] report for ${result.date} emailed to ${result.recipients.join(', ')}`
-            : `[day-end] skipped — ${result.reason}`
-        );
-      } catch (err) {
-        console.error('[day-end] failed:', err.message);
-      }
-      schedule();
-    }, next - Date.now());
-    console.log(`[day-end] daily report scheduled for ${time} IST (next: ${new Date(next).toISOString()})`);
-  };
-  schedule();
+  let next = new Date(`${todayIST()}T${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}:00+05:30`).getTime();
+  if (next <= Date.now()) next += 24 * 60 * 60 * 1000;
+  dayEndTimer = setTimeout(async () => {
+    try {
+      const result = await sendDayEndReport();
+      console.log(
+        result.sent
+          ? `[day-end] report for ${result.date} emailed to ${result.recipients.join(', ')}`
+          : `[day-end] skipped — ${result.reason}`
+      );
+    } catch (err) {
+      console.error('[day-end] failed:', err.message);
+    }
+    scheduleDayEndReport();
+  }, next - Date.now());
+  console.log(`[day-end] daily report scheduled for ${time} IST (next: ${new Date(next).toISOString()})`);
 }

@@ -7,14 +7,19 @@ import { useToast } from '../../components/toast';
 export default function Settings() {
   const toast = useToast();
   const [emails, setEmails] = useState('');
+  const [dayEndTime, setDayEndTime] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     api
       .get('/api/settings')
-      .then((d) => setEmails((d.settings.globalNotifyEmails || []).join(', ')))
+      .then((d) => {
+        setEmails((d.settings.globalNotifyEmails || []).join(', '));
+        setDayEndTime(d.settings.dayEndReportTime || '');
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoaded(true));
   }, []);
@@ -26,13 +31,28 @@ export default function Settings() {
     setBusy(true);
     setError('');
     try {
-      const d = await api.put('/api/settings', { globalNotifyEmails: parsed });
+      const d = await api.put('/api/settings', { globalNotifyEmails: parsed, dayEndReportTime: dayEndTime });
       setEmails((d.settings.globalNotifyEmails || []).join(', '));
+      setDayEndTime(d.settings.dayEndReportTime || '');
       toast('Settings saved');
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function sendNow() {
+    setSending(true);
+    setError('');
+    try {
+      const r = await api.post('/api/settings/day-end-report');
+      if (r.sent) toast(`Day-end report sent to ${r.recipients.join(', ')}`);
+      else toast(r.reason || 'Report was not sent', 'error');
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
     }
   }
 
@@ -66,10 +86,27 @@ export default function Settings() {
             </div>
           )}
 
+          <div className="border-t border-slate-100 pt-4">
+            <h3 className="text-sm font-bold text-slate-700">Day-end report</h3>
+            <p className="mt-1 text-xs leading-relaxed text-slate-500">
+              Every day at this time (IST), the addresses above get an email summarising all cash collected and handed over that day, with the full PDF reports attached.
+            </p>
+            <div className="mt-3 max-w-[200px]">
+              <Field label="Send daily at" hint="Clear the time to disable the automatic report">
+                <Input type="time" value={dayEndTime} onChange={(e) => setDayEndTime(e.target.value)} />
+              </Field>
+            </div>
+          </div>
+
           <Alert>{error}</Alert>
-          <Button type="submit" loading={busy} icon={busy ? undefined : 'check'}>
-            Save settings
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" loading={busy} icon={busy ? undefined : 'check'}>
+              Save settings
+            </Button>
+            <Button type="button" variant="secondary" loading={sending} icon={sending ? undefined : 'send'} onClick={sendNow} disabled={parsed.length === 0}>
+              {sending ? 'Sending…' : "Send today's report now"}
+            </Button>
+          </div>
         </form>
       )}
     </div>

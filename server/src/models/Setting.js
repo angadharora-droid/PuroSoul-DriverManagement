@@ -16,6 +16,16 @@ const settingSchema = new mongoose.Schema(
       },
       set: (emails) => (emails || []).map((e) => String(e).trim().toLowerCase()).filter(Boolean),
     },
+    // Automatic day-end report time (HH:MM, 24h, IST). Empty string disables it;
+    // never-set (undefined) falls back to the DAY_END_REPORT_TIME env variable.
+    dayEndReportTime: {
+      type: String,
+      trim: true,
+      validate: {
+        validator: (t) => !t || /^([01]?\d|2[0-3]):([0-5]\d)$/.test(t),
+        message: 'Day-end report time must be HH:MM (24-hour)',
+      },
+    },
   },
   { timestamps: true }
 );
