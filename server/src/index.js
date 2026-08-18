@@ -43,7 +43,7 @@ const port = Number(process.env.PORT) || 5000;
 
 connectDb()
   .then(() => {
-    scheduleDayEndReport();
+    scheduleDayEndReport().catch((err) => console.error('[day-end] scheduling failed:', err.message));
     app.listen(port, () => console.log(`[server] listening on http://localhost:${port}`));
   })
   .catch((err) => {
