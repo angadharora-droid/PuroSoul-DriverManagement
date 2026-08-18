@@ -82,6 +82,76 @@ export function receiptPdf(txn) {
   return docToBuffer(doc);
 }
 
+/** Handover receipt — attached to the handover-verified email; lists each party's amount. */
+export function handoverReceiptPdf(handover, collector, parties) {
+  const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
+  header(doc, 'Cash Handover Receipt', `Reference: ${handover.ref}`);
+
+  const receivedBy = handover.recipientDesignation
+    ? `${handover.recipientName} — ${handover.recipientDesignation}`
+    : handover.recipientName;
+  const rows = [
+    ['Handed over by (collector)', collector?.name || '—'],
+    ['Received by', receivedBy],
+    ['Collections handed over', String(handover.transactions.length)],
+    ['OTP verified at', formatDateTime(handover.verifiedAt)],
+    ['Status', 'VERIFIED — acknowledged by receiver via OTP'],
+  ];
+  if (handover.notes) rows.push(['Notes', handover.notes]);
+
+  let y = doc.y + 6;
+  for (const [label, value] of rows) {
+    doc.font('Helvetica').fontSize(10).fillColor(MUTED).text(label, 50, y, { width: 160 });
+    doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text(value, 220, y, { width: 325 });
+    y = Math.max(doc.y, y + 16) + 6;
+    doc.moveTo(50, y - 3).lineTo(545, y - 3).strokeColor(LINE).stroke();
+  }
+
+  // Party-wise breakdown of the cash handed over
+  y += 14;
+  doc.font('Helvetica-Bold').fontSize(10).fillColor(INK).text('Party-wise amounts', 50, y);
+  y = doc.y + 6;
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(MUTED);
+  doc.text('PARTY', 50, y, { width: 275 });
+  doc.text('COLLECTIONS', 330, y, { width: 100, align: 'right' });
+  doc.text('AMOUNT', 435, y, { width: 110, align: 'right' });
+  doc.moveTo(50, y + 14).lineTo(545, y + 14).strokeColor(LINE).stroke();
+  y += 20;
+  for (const p of parties || []) {
+    if (y > 720) {
+      footer(doc);
+      doc.addPage();
+      y = 60;
+    }
+    doc.font('Helvetica').fontSize(9).fillColor(INK);
+    doc.text(p.name, 50, y, { width: 275, ellipsis: true, height: 12 });
+    doc.text(String(p.count), 330, y, { width: 100, align: 'right' });
+    doc.text(formatINR(p.amount), 435, y, { width: 110, align: 'right' });
+    y += 16;
+  }
+
+  if (y > 680) {
+    footer(doc);
+    doc.addPage();
+    y = 60;
+  }
+  y += 8;
+  doc.roundedRect(50, y, 495, 54, 6).fillAndStroke(ACCENT_BG, ACCENT_BORDER);
+  doc.fillColor(ACCENT).font('Helvetica').fontSize(9).text('TOTAL CASH HANDED OVER', 70, y + 10);
+  doc.font('Helvetica-Bold').fontSize(20).text(formatINR(handover.totalAmount), 70, y + 24);
+
+  doc.fillColor(MUTED).font('Helvetica').fontSize(9);
+  doc.text(
+    'This receipt certifies that the receiver acknowledged taking custody of the above cash by sharing the one-time password sent to their registered mobile number.',
+    50,
+    y + 74,
+    { width: 495 }
+  );
+
+  footer(doc);
+  return docToBuffer(doc);
+}
+
 const TABLE_COLS = [
   { key: 'date', label: 'Date & time', x: 50, w: 115 },
   { key: 'ref', label: 'Ref', x: 165, w: 60 },

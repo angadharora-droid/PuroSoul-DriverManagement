@@ -40,7 +40,7 @@ export default function Settings() {
     <div className="max-w-xl space-y-4">
       <PageHeader
         title="Notification settings"
-        subtitle="These addresses receive an email with the PDF receipt for every verified collection, in addition to each party's own notification emails."
+        subtitle="These addresses receive an email with the PDF receipt for every verified collection and every verified cash handover, plus the day-end report — in addition to each party's own notification emails."
       />
 
       {!loaded ? (

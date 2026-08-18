@@ -1,6 +1,6 @@
 import { sendMail } from './email.js';
 import { sendSms } from './sms.js';
-import { receiptPdf } from './pdf.js';
+import { receiptPdf, handoverReceiptPdf } from './pdf.js';
 import { getGlobalSettings } from '../models/Setting.js';
 import { formatINR, formatDateTime } from '../utils/format.js';
 
@@ -61,6 +61,81 @@ export async function notifyVerified(txn) {
 
   txn.notifyError = errors.join(' | ');
   await txn.save();
+}
+
+/**
+ * Fired after a handover is verified. Emails the global notification addresses
+ * (Settings) the handover summary — who handed over, who received, and the
+ * party-wise amounts — with the PDF handover receipt attached. Failures are
+ * recorded on the handover, never thrown.
+ */
+export async function notifyHandoverVerified(handover, collector, parties) {
+  const settings = await getGlobalSettings().catch(() => null);
+  const recipients = (settings && settings.globalNotifyEmails) || [];
+  if (!recipients.length) return;
+
+  try {
+    const pdf = await handoverReceiptPdf(handover, collector, parties);
+    await sendMail({
+      to: recipients,
+      subject: `Cash handed over: ${formatINR(handover.totalAmount)} by ${collector?.name || 'collector'} to ${handover.recipientName} (ref ${handover.ref})`,
+      html: handoverEmailHtml(handover, collector, parties),
+      attachments: [{ filename: `handover-${handover.ref}.pdf`, content: pdf, contentType: 'application/pdf' }],
+    });
+    handover.notifyError = '';
+  } catch (err) {
+    handover.notifyError = `email: ${err.message}`;
+  }
+  await handover.save().catch(() => {});
+}
+
+function handoverEmailHtml(handover, collector, parties) {
+  const cell = 'padding:6px 12px;font-size:13px';
+  const row = (label, value) =>
+    `<tr><td style="${cell};color:#64748b">${label}</td>` +
+    `<td style="${cell};color:#0f172a;font-weight:600">${value}</td></tr>`;
+
+  const partyRows = (parties || [])
+    .map(
+      (p) =>
+        `<tr><td style="${cell};color:#0f172a">${p.name}</td>` +
+        `<td style="${cell};color:#64748b;text-align:center">${p.count}</td>` +
+        `<td style="${cell};color:#0f172a;font-weight:600;text-align:right">${formatINR(p.amount)}</td></tr>`
+    )
+    .join('');
+
+  const receivedBy = handover.recipientDesignation
+    ? `${handover.recipientName} — ${handover.recipientDesignation}`
+    : handover.recipientName;
+
+  return `
+  <div style="font-family:Segoe UI,Arial,sans-serif;max-width:520px;margin:0 auto">
+    <h2 style="color:#185997;margin-bottom:4px">${COMPANY} — Cash Handover Verified</h2>
+    <p style="color:#334155;font-size:14px">A collector handed over cash and the receiver confirmed it by OTP. The PDF handover receipt is attached.</p>
+    <table style="border-collapse:collapse;background:#eff6fc;border-radius:8px;width:100%">
+      ${row('Handed over by', collector?.name || '—')}
+      ${row('Received by', receivedBy)}
+      ${row('Total amount', formatINR(handover.totalAmount))}
+      ${row('Collections', String(handover.transactions.length))}
+      ${row('Verified at', formatDateTime(handover.verifiedAt) + ' IST')}
+      ${row('Reference', handover.ref)}
+      ${handover.notes ? row('Notes', handover.notes) : ''}
+    </table>
+    <h3 style="color:#0f172a;font-size:14px;margin:16px 0 6px">Party-wise amounts</h3>
+    <table style="border-collapse:collapse;background:#f8fafc;border-radius:8px;width:100%">
+      <tr>
+        <th style="${cell};color:#64748b;text-align:left">Party</th>
+        <th style="${cell};color:#64748b;text-align:center">Collections</th>
+        <th style="${cell};color:#64748b;text-align:right">Amount</th>
+      </tr>
+      ${partyRows || `<tr><td style="${cell};color:#64748b" colspan="3">—</td></tr>`}
+      <tr>
+        <td style="${cell};color:#185997;font-weight:700">TOTAL</td>
+        <td style="${cell};color:#185997;font-weight:700;text-align:center">${handover.transactions.length}</td>
+        <td style="${cell};color:#185997;font-weight:700;text-align:right">${formatINR(handover.totalAmount)}</td>
+      </tr>
+    </table>
+  </div>`;
 }
 
 function emailHtml(txn) {

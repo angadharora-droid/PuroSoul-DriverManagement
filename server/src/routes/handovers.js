@@ -6,6 +6,7 @@ import Transaction from '../models/Transaction.js';
 import Handover from '../models/Handover.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendSms } from '../services/sms.js';
+import { notifyHandoverVerified } from '../services/notify.js';
 import { maskMobile, formatINR } from '../utils/format.js';
 import {
   generateOtp,
@@ -95,6 +96,22 @@ function collectorView(h, extra = {}) {
     recipient: { id: h.recipient?._id || h.recipient, name: h.recipientName, designation: h.recipientDesignation },
     ...extra,
   };
+}
+
+/** Per-party totals of a handover's collections, largest first — shown on the done screen and in the email. */
+async function partyBreakdown(h) {
+  const txns = await Transaction.find({ _id: { $in: h.transactions } })
+    .select('amount party')
+    .populate('party', 'name');
+  const byParty = new Map();
+  for (const t of txns) {
+    const name = t.party?.name || '—';
+    const cur = byParty.get(name) || { name, amount: 0, count: 0 };
+    cur.amount = Math.round((cur.amount + t.amount) * 100) / 100;
+    cur.count += 1;
+    byParty.set(name, cur);
+  }
+  return [...byParty.values()].sort((a, b) => b.amount - a.amount);
 }
 
 /** Handovers that still "own" their transactions: verified, or pending with a live OTP. */
@@ -307,7 +324,9 @@ router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
   const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id });
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
 
-  if (handover.status === 'verified') return res.json({ handover: collectorView(handover) }); // idempotent
+  if (handover.status === 'verified') {
+    return res.json({ handover: collectorView(handover, { parties: await partyBreakdown(handover) }) }); // idempotent
+  }
   if (handover.status === 'cancelled') return res.status(400).json({ error: 'This handover was cancelled — start a new one' });
   if (handover.status === 'failed') {
     return res.status(400).json({ error: 'This handover is locked after too many wrong attempts — resend OTP or start again' });
@@ -350,7 +369,14 @@ router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
   handover.verifiedAt = new Date();
   await handover.save();
 
-  res.json({ handover: collectorView(handover), verified: true });
+  const parties = await partyBreakdown(handover);
+
+  // Email to the Settings notification addresses fires in the background; verification is already final.
+  notifyHandoverVerified(handover, req.user, parties).catch((err) =>
+    console.error('[notify] handover email failed:', err.message)
+  );
+
+  res.json({ handover: collectorView(handover, { parties }), verified: true });
 });
 
 /** Collector abandons a pending handover, releasing its collections immediately. */
