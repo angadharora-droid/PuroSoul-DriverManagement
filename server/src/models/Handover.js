@@ -12,7 +12,11 @@ const MUTABLE_AFTER_VERIFY = new Set(['notifyError', 'updatedAt']);
 
 const handoverSchema = new mongoose.Schema(
   {
-    collector: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', required: true, index: true },
+    // Whoever is handing over the cash — normally a Collector, but a Receiver
+    // who also collects (see Receiver.canCollect) can hand their own collected
+    // cash over too. collectorModel picks which collection populate() reads.
+    collector: { type: mongoose.Schema.Types.ObjectId, refPath: 'collectorModel', required: true, index: true },
+    collectorModel: { type: String, enum: ['Collector', 'Receiver'], default: 'Collector' },
     recipient: { type: mongoose.Schema.Types.ObjectId, ref: 'Receiver', required: true, index: true },
     // Snapshots so the record stays readable even if the receiver is renamed/removed.
     recipientName: { type: String, required: true, trim: true },

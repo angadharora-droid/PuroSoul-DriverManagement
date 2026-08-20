@@ -19,7 +19,11 @@ const MUTABLE_AFTER_VERIFY = new Set([
 const transactionSchema = new mongoose.Schema(
   {
     party: { type: mongoose.Schema.Types.ObjectId, ref: 'Party', required: true, index: true },
-    collector: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', required: true, index: true },
+    // Whoever collected the cash — normally a Collector, but a Receiver who has
+    // also been granted the ability to collect (see Receiver.canCollect) can be
+    // the collector too. collectorModel picks which collection populate() reads.
+    collector: { type: mongoose.Schema.Types.ObjectId, refPath: 'collectorModel', required: true, index: true },
+    collectorModel: { type: String, enum: ['Collector', 'Receiver'], default: 'Collector' },
     amount: {
       type: Number,
       required: [true, 'Amount is required'],

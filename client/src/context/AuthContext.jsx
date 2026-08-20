@@ -4,6 +4,12 @@ import { Spinner } from '../components/ui';
 
 const AuthContext = createContext(null);
 
+const LOGIN_PATHS = {
+  admin: '/api/auth/admin/login',
+  receiver: '/api/auth/receiver/login',
+  collector: '/api/auth/collector/login',
+};
+
 export function AuthProvider({ children }) {
   const [auth, setAuthState] = useState(getAuth);
   // A restored session is only trusted once the API confirms it: a token that
@@ -29,7 +35,7 @@ export function AuthProvider({ children }) {
   }, [checking]);
 
   const login = useCallback(async (role, credentials) => {
-    const path = role === 'admin' ? '/api/auth/admin/login' : '/api/auth/collector/login';
+    const path = LOGIN_PATHS[role] || LOGIN_PATHS.collector;
     const data = await api.post(path, credentials);
     const next = { token: data.token, user: data.user };
     setAuth(next);

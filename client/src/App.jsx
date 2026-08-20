@@ -13,10 +13,10 @@ import Admins from './pages/admin/Admins';
 import Reports from './pages/admin/Reports';
 import Settings from './pages/admin/Settings';
 
-function RequireRole({ role, children }) {
+function RequireRole({ roles, children }) {
   const { user } = useAuth();
   if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== role) return <Navigate to={user.role === 'admin' ? '/admin' : '/'} replace />;
+  if (!roles.includes(user.role)) return <Navigate to={user.role === 'admin' ? '/admin' : '/'} replace />;
   return children;
 }
 
@@ -45,7 +45,7 @@ export default function App() {
 
       <Route
         element={
-          <RequireRole role="collector">
+          <RequireRole roles={['collector', 'receiver']}>
             <Layout links={collectorLinks} />
           </RequireRole>
         }
@@ -57,7 +57,7 @@ export default function App() {
 
       <Route
         element={
-          <RequireRole role="admin">
+          <RequireRole roles={['admin']}>
             <Layout links={adminLinks} />
           </RequireRole>
         }

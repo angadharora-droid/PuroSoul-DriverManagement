@@ -74,7 +74,7 @@ function collectorView(txn, extra = {}) {
 // ---------------------------------------------------------------- collector ---
 
 /** Start a collection: validates the party against the DB and sends the OTP to the PARTY's mobile. */
-router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+router.post('/', requireAuth('collector', 'receiver'), otpSendLimiter, async (req, res) => {
   const { partyId, amount, notes, mobileIndex } = req.body || {};
 
   // Backend re-validation: the party must exist in the approved database and be active.
@@ -99,6 +99,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   const txn = await Transaction.create({
     party: party._id,
     collector: req.user.id,
+    collectorModel: req.user.role === 'receiver' ? 'Receiver' : 'Collector',
     amount: Math.round(amt * 100) / 100,
     notes: notes ? String(notes).slice(0, 500) : '',
     otpMobile,
@@ -137,7 +138,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
 });
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
-router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+router.post('/:id/resend-otp', requireAuth('collector', 'receiver'), otpSendLimiter, async (req, res) => {
   const txn = await Transaction.findOne({ _id: req.params.id, collector: req.user.id }).populate('party');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
   // 'failed' (locked after wrong attempts) is recoverable with a fresh OTP, per policy.
@@ -181,7 +182,7 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
 });
 
 /** Verify the OTP the collector got verbally from the party. */
-router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
+router.post('/:id/verify', requireAuth('collector', 'receiver'), async (req, res) => {
   const otp = String((req.body || {}).otp || '').trim();
   const txn = await Transaction.findOne({ _id: req.params.id, collector: req.user.id }).populate('party collector');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
@@ -222,8 +223,8 @@ router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
   res.json({ transaction: collectorView(txn), verified: true });
 });
 
-/** Collector's own history. */
-router.get('/mine', requireAuth('collector'), async (req, res) => {
+/** Collector's own history (also used by receivers who collect). */
+router.get('/mine', requireAuth('collector', 'receiver'), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
   const filter = { collector: req.user.id };
@@ -305,11 +306,11 @@ router.get('/export.csv', requireAuth('admin'), async (req, res) => {
   res.send(csv);
 });
 
-/** Receipt PDF for a single verified collection (admin, or the collector who collected it). */
-router.get('/:id/receipt.pdf', requireAuth('admin', 'collector'), async (req, res) => {
+/** Receipt PDF for a single verified collection (admin, or whoever collected it). */
+router.get('/:id/receipt.pdf', requireAuth('admin', 'collector', 'receiver'), async (req, res) => {
   const txn = await Transaction.findById(req.params.id).populate('party collector');
   if (!txn) return res.status(404).json({ error: 'Collection not found' });
-  if (req.user.role === 'collector' && txn.collector._id.toString() !== req.user.id) {
+  if (req.user.role !== 'admin' && txn.collector._id.toString() !== req.user.id) {
     return res.status(403).json({ error: 'Not your collection' });
   }
   if (txn.status !== 'verified') return res.status(400).json({ error: 'Receipt is only available for verified collections' });
