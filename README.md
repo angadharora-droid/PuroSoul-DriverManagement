@@ -14,7 +14,7 @@ A full-stack app that creates a verified, tamper-proof record of every cash paym
 | SMS/OTP | Pluggable: `console` (dev) / MSG91 / Twilio / Fast2SMS |
 | Email | Nodemailer (any SMTP: company mail, SendGrid, Mailgun) |
 | PDFs | `pdfkit` — single-collection receipt + multi-transaction report template |
-| Auth | JWT with collector/admin roles, bcrypt password + OTP hashing |
+| Auth | JWT with collector/receiver/admin roles, bcrypt password + OTP hashing |
 
 ## Quick start
 
@@ -40,7 +40,9 @@ With `SMS_PROVIDER=console` (the default), OTPs and SMS confirmations are printe
 
 ## The collection flow
 
-1. Collector logs in (mobile + password) → **New collection**.
+> A **receiver** can also be granted a password on the Receivers page, in which case they log in and use this exact same flow — a receiver isn't only a drop-off point, they can collect cash from parties too, just like a collector. Everything below applies equally to both; "collector" just means "whoever is currently collecting."
+
+1. Collector (or a collecting receiver) logs in (mobile + password) → **New collection**.
 2. Selects party from the searchable dropdown (options come from the DB; the backend re-validates the id and rejects anything not in the approved list). Enters amount and optional notes.
 3. **Send OTP to party** → 4-digit OTP (crypto-random, bcrypt-hashed at rest, 5-min expiry) is SMS'd to the party's registered mobile. The collector never sees the number or the code — the app shows only the masked number.
 4. Collector asks the party for the code and enters it. 3 wrong attempts lock the transaction (`failed`); a fresh OTP resend (max 3, 60s cooldown, plus a 10-sends/15-min per-collector rate limit) unlocks it. Expired OTPs require resend.
@@ -57,13 +59,15 @@ After collecting, the collector deposits the cash with a **receiver** (accounts,
 3. The OTP goes to the **recipient's** mobile. The recipient counts the cash and tells the collector the code; the collector enters it. Same limits as collections (5-min expiry, 3 attempts, 3 resends, rate-limited).
 4. On success the handover is `verified` and **immutable**, each included collection is linked to it (so it can never be handed over twice), and the record appears in the **Reports → Handovers** tab. A pending handover can be cancelled by the collector, which releases its collections immediately.
 
+A receiver who also collects (see above) goes through this same handover flow to pass their own collected cash on to another receiver — the recipient dropdown excludes themselves so they can't hand cash to their own account.
+
 ## Admin panel
 
 - **Collections** — filter by date range / collector / party / status, verified totals, CSV export, per-transaction OTP audit trail (attempt/resend counts and timestamps — never the OTP itself), receipt PDF download, append-only audit notes.
 - **Reports** — Daily (grouped by collector, grand total), By Party, By Collector (with per-party breakdown), Handovers (grouped by collector with per-recipient breakdown), Custom Range. Each shows on-screen totals and exports as **PDF** and **CSV**. Only `verified` transactions count toward totals; other statuses are listed separately for audit. A **day-end email** with the daily report PDF (every collection with party, time, collector and amount) goes to the global notification emails automatically at `DAY_END_REPORT_TIME` (IST) — or on demand via the "Email report" button on the Daily tab.
 - **Parties** — add/edit/deactivate, registered mobile, per-party notification emails.
 - **Collectors** — add/edit/deactivate, password resets.
-- **Receivers** — the staff who take cash off collectors (name, designation, mobile). They have no login and no panel access; the mobile is where the handover OTP goes. Deactivate to remove someone from the collector's recipient dropdown without touching past handovers.
+- **Receivers** — the staff who take cash off collectors (name, designation, mobile). By default they have no login and no panel access; the mobile is where the handover OTP goes. Optionally set a password on a receiver to also let them log in and collect cash themselves, exactly like a collector (the "Collects cash?" column shows who can). Deactivate to remove someone from the collector's recipient dropdown without touching past handovers.
 - **Admins** — create additional admin accounts, edit/deactivate, password resets, and an optional contact mobile (which admins can also log in with — country code and formatting tolerated). Admin passwords may be a 4- or 6-digit PIN or a normal 8+ character password; all other roles need 8+ characters. You cannot deactivate your own account or the last active admin.
 - **Settings** — global notification emails (receive every verified collection).
 

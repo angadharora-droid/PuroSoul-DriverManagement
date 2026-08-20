@@ -26,7 +26,7 @@ function tokenExpiresAt(token) {
 function isUsableSession(s) {
   if (!s || s.v !== SESSION_VERSION) return false;
   if (typeof s.token !== 'string' || !s.token) return false;
-  if (!s.user || !s.user.id || (s.user.role !== 'admin' && s.user.role !== 'collector')) return false;
+  if (!s.user || !s.user.id || !['admin', 'collector', 'receiver'].includes(s.user.role)) return false;
   const expiresAt = tokenExpiresAt(s.token);
   return expiresAt === null || expiresAt > Date.now();
 }

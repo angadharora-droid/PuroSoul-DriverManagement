@@ -155,8 +155,10 @@ function releaseTransactions(h) {
 // ---------------------------------------------------------------- collector ---
 
 /** Active receivers who can take cash. Mobile is masked for collectors. */
-router.get('/recipients', requireAuth('collector'), async (_req, res) => {
-  const receivers = await Receiver.find({ isActive: true }).sort({ name: 1 });
+router.get('/recipients', requireAuth('collector', 'receiver'), async (req, res) => {
+  // A receiver who collects can't hand cash over to themselves.
+  const filter = req.user.role === 'receiver' ? { isActive: true, _id: { $ne: req.user.id } } : { isActive: true };
+  const receivers = await Receiver.find(filter).sort({ name: 1 });
   res.json({
     recipients: receivers.map((r) => ({
       id: r._id,
@@ -168,7 +170,7 @@ router.get('/recipients', requireAuth('collector'), async (_req, res) => {
 });
 
 /** Verified collections still in the collector's hands (not yet part of any live handover). */
-router.get('/pending-cash', requireAuth('collector'), async (req, res) => {
+router.get('/pending-cash', requireAuth('collector', 'receiver'), async (req, res) => {
   const lockedIds = await Handover.find(activeHandoverFilter({ collector: req.user.id })).distinct('transactions');
   const txns = await Transaction.find({
     collector: req.user.id,
@@ -194,7 +196,7 @@ router.get('/pending-cash', requireAuth('collector'), async (req, res) => {
 });
 
 /** Start a handover: validates the selection and sends the OTP to the RECIPIENT's mobile. */
-router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+router.post('/', requireAuth('collector', 'receiver'), otpSendLimiter, async (req, res) => {
   const { transactionIds, recipientId, notes } = req.body || {};
 
   const ids = [...new Set((Array.isArray(transactionIds) ? transactionIds : []).map(String))];
@@ -212,6 +214,9 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   if (!/^\d{10}$/.test(recipient.mobile || '')) {
     return res.status(400).json({ error: 'This receiver has no mobile number on file — an admin must add it first' });
   }
+  if (req.user.role === 'receiver' && recipient._id.toString() === req.user.id) {
+    return res.status(400).json({ error: 'You cannot hand cash over to yourself' });
+  }
 
   // Only the collector's own verified, not-yet-handed-over collections qualify.
   const txns = await Transaction.find({ _id: { $in: ids }, collector: req.user.id, status: 'verified', handover: null });
@@ -227,6 +232,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
   const code = generateOtp();
   const handover = await Handover.create({
     collector: req.user.id,
+    collectorModel: req.user.role === 'receiver' ? 'Receiver' : 'Collector',
     recipient: recipient._id,
     recipientName: recipient.name,
     recipientDesignation: recipient.designation || '',
@@ -268,7 +274,7 @@ router.post('/', requireAuth('collector'), otpSendLimiter, async (req, res) => {
 });
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
-router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (req, res) => {
+router.post('/:id/resend-otp', requireAuth('collector', 'receiver'), otpSendLimiter, async (req, res) => {
   const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id }).populate('recipient');
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
   // 'failed' (locked after wrong attempts) is recoverable with a fresh OTP, per policy.
@@ -319,7 +325,7 @@ router.post('/:id/resend-otp', requireAuth('collector'), otpSendLimiter, async (
 });
 
 /** Verify the OTP the collector got verbally from the recipient. */
-router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
+router.post('/:id/verify', requireAuth('collector', 'receiver'), async (req, res) => {
   const otp = String((req.body || {}).otp || '').trim();
   const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id });
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
@@ -380,7 +386,7 @@ router.post('/:id/verify', requireAuth('collector'), async (req, res) => {
 });
 
 /** Collector abandons a pending handover, releasing its collections immediately. */
-router.post('/:id/cancel', requireAuth('collector'), async (req, res) => {
+router.post('/:id/cancel', requireAuth('collector', 'receiver'), async (req, res) => {
   const handover = await Handover.findOne({ _id: req.params.id, collector: req.user.id });
   if (!handover) return res.status(404).json({ error: 'Handover not found' });
   if (!['pending_otp', 'expired', 'failed'].includes(handover.status)) {
@@ -393,8 +399,8 @@ router.post('/:id/cancel', requireAuth('collector'), async (req, res) => {
   res.json({ handover: collectorView(handover) });
 });
 
-/** Collector's own handover history. */
-router.get('/mine', requireAuth('collector'), async (req, res) => {
+/** Collector's own handover history (also used by receivers who collect). */
+router.get('/mine', requireAuth('collector', 'receiver'), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 20);
   const filter = { collector: req.user.id };

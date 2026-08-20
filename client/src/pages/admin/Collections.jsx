@@ -37,7 +37,14 @@ export default function Collections() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    api.get('/api/collectors').then((d) => setCollectors(d.collectors)).catch(() => {});
+    // "Collector" here covers anyone who can collect cash — plain collectors
+    // plus any receiver an admin has also granted collection login to.
+    Promise.all([
+      api.get('/api/collectors').then((d) => d.collectors),
+      api.get('/api/receivers').then((d) => d.receivers.filter((r) => r.canCollect)),
+    ])
+      .then(([c, r]) => setCollectors([...c, ...r.map((x) => ({ ...x, isReceiver: true }))]))
+      .catch(() => {});
     api.get('/api/parties').then((d) => setParties(d.parties)).catch(() => {});
   }, []);
 
@@ -91,7 +98,7 @@ export default function Collections() {
             <select className={inputClass} value={filters.collectorId} onChange={(e) => setFilter('collectorId', e.target.value)}>
               <option value="">All collectors</option>
               {collectors.map((d) => (
-                <option key={d._id} value={d._id}>{d.name}</option>
+                <option key={d._id} value={d._id}>{d.name}{d.isReceiver ? ' (Receiver)' : ''}</option>
               ))}
             </select>
           </FilterField>

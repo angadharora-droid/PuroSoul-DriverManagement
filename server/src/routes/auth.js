@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import Collector from '../models/Collector.js';
+import Receiver from '../models/Receiver.js';
 import Admin from '../models/Admin.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
 import { passwordPolicyError } from '../utils/password.js';
@@ -28,6 +29,21 @@ router.post('/collector/login', loginLimiter, async (req, res) => {
     // designation is deliberately not returned: it is for the receiver (in the
     // handover OTP) and for admins, not for the collector's own screens.
     user: { id: collector._id, name: collector.name, role: 'collector', mobile: collector.mobile },
+  });
+});
+
+/** Receiver login — only receivers an admin has granted a password to (canCollect) can sign in. */
+router.post('/receiver/login', loginLimiter, async (req, res) => {
+  const { mobile, password } = req.body || {};
+  if (!mobile || !password) return res.status(400).json({ error: 'Mobile and password are required' });
+
+  const receiver = await Receiver.findOne({ mobile: String(mobile).trim() });
+  const ok = receiver && receiver.isActive && receiver.passwordHash && (await receiver.verifyPassword(String(password)));
+  if (!ok) return res.status(401).json({ error: 'Invalid mobile number or password' });
+
+  res.json({
+    token: signToken(receiver, 'receiver'),
+    user: { id: receiver._id, name: receiver.name, role: 'receiver', mobile: receiver.mobile },
   });
 });
 
@@ -75,8 +91,8 @@ const changePasswordLimiter = rateLimit({
   message: { error: 'Too many attempts — please wait a few minutes' },
 });
 
-/** Self-service password change for the logged-in account (collector or admin). */
-router.post('/change-password', requireAuth('collector', 'admin'), changePasswordLimiter, async (req, res) => {
+/** Self-service password change for the logged-in account (collector, receiver, or admin). */
+router.post('/change-password', requireAuth('collector', 'receiver', 'admin'), changePasswordLimiter, async (req, res) => {
   const { currentPassword, newPassword } = req.body || {};
   if (!currentPassword || !newPassword) {
     return res.status(400).json({ error: 'Current and new passwords are required' });
@@ -87,7 +103,7 @@ router.post('/change-password', requireAuth('collector', 'admin'), changePasswor
     return res.status(400).json({ error: 'New password must be different from the current one' });
   }
 
-  const Model = req.user.role === 'collector' ? Collector : Admin;
+  const Model = req.user.role === 'collector' ? Collector : req.user.role === 'receiver' ? Receiver : Admin;
   const account = await Model.findById(req.user.id);
   // 400 (not 401) on a wrong current password — a 401 makes the client log out.
   if (!(await account.verifyPassword(String(currentPassword)))) {

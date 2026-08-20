@@ -30,7 +30,14 @@ export default function Reports() {
 
   useEffect(() => {
     api.get('/api/parties').then((d) => setParties(d.parties)).catch(() => {});
-    api.get('/api/collectors').then((d) => setCollectors(d.collectors)).catch(() => {});
+    // "Collector" here covers anyone who can collect cash — plain collectors
+    // plus any receiver an admin has also granted collection login to.
+    Promise.all([
+      api.get('/api/collectors').then((d) => d.collectors),
+      api.get('/api/receivers').then((d) => d.receivers.filter((r) => r.canCollect)),
+    ])
+      .then(([c, r]) => setCollectors([...c, ...r.map((x) => ({ ...x, isReceiver: true }))]))
+      .catch(() => {});
   }, []);
 
   const params = useCallback(
@@ -119,7 +126,7 @@ export default function Reports() {
                 <select className={`${inputClass} w-auto`} value={collectorId} onChange={(e) => setCollectorId(e.target.value)}>
                   <option value="">All collectors</option>
                   {collectors.map((d) => (
-                    <option key={d._id} value={d._id}>{d.name}</option>
+                    <option key={d._id} value={d._id}>{d.name}{d.isReceiver ? ' (Receiver)' : ''}</option>
                   ))}
                 </select>
               </label>

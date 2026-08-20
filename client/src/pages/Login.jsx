@@ -55,12 +55,13 @@ export default function Login() {
             }}
             options={[
               { value: 'collector', label: 'Collector', icon: 'truck' },
+              { value: 'receiver', label: 'Receiver', icon: 'inbox' },
               { value: 'admin', label: 'Admin', icon: 'shield' },
             ]}
           />
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {role === 'collector' ? (
+            {role === 'collector' || role === 'receiver' ? (
               <Field label="Mobile number">
                 <Input
                   type="tel"

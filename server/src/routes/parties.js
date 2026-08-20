@@ -11,7 +11,7 @@ const router = Router();
  * labels plus the index to send to, so the collector can choose without ever
  * seeing the number itself.
  */
-router.get('/options', requireAuth('collector', 'admin'), async (_req, res) => {
+router.get('/options', requireAuth('collector', 'receiver', 'admin'), async (_req, res) => {
   const parties = await Party.find({ isActive: true }).sort({ name: 1 }).select('name distributorCode mobile altMobiles');
   res.json({
     parties: parties.map((p) => ({
