@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose';
 import Collector from '../models/Collector.js';
 import Receiver from '../models/Receiver.js';
 import Admin from '../models/Admin.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
+import { verifySsoToken } from '../lib/ssoClient.js';
 import { passwordPolicyError } from '../utils/password.js';
 
 const router = Router();
@@ -71,6 +73,37 @@ router.post('/admin/login', loginLimiter, async (req, res) => {
     token: signToken(admin, 'admin'),
     user: { id: admin._id, name: admin.name, role: 'admin', email: admin.email },
   });
+});
+
+// Which collection backs each link-ID prefix — the same three as the logins above.
+const SSO_MODELS = { collector: Collector, receiver: Receiver, admin: Admin };
+
+/**
+ * Central sign-on from the CPG portal. The browser brings a hand-off token; the
+ * auth service tells us which account it is linked to as "<role>:<id>" (what
+ * the portal admin typed, e.g. "collector:66a1…"), and the response is exactly
+ * what that role's login returns. No-op until AUTH_SERVICE_URL is set; the
+ * password logins above are unchanged.
+ */
+router.post('/sso', loginLimiter, async (req, res) => {
+  const { token } = req.body || {};
+  if (!token || typeof token !== 'string') return res.status(400).json({ error: 'token is required' });
+
+  const verified = await verifySsoToken(token);
+  if (!verified) return res.status(401).json({ error: 'SSO sign-in failed' });
+
+  const [role, id] = String(verified.localUserId || '').split(':');
+  const Model = SSO_MODELS[role];
+  const account = Model && mongoose.isValidObjectId(id) ? await Model.findById(id) : null;
+  // A receiver can only sign in once an admin has granted them a password
+  // (canCollect) — the same rule as /receiver/login.
+  const canSignIn = account && account.isActive && (role !== 'receiver' || account.passwordHash);
+  if (!canSignIn) return res.status(404).json({ error: 'No account linked' });
+
+  const user = { id: account._id, name: account.name, role };
+  if (role === 'admin') user.email = account.email;
+  else user.mobile = account.mobile;
+  res.json({ token: signToken(account, role), user });
 });
 
 router.get('/me', requireAuth(), (req, res) => {

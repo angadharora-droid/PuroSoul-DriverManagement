@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import { connectDb } from './config/db.js';
 import authRoutes from './routes/auth.js';
+import ssoRoutes from './routes/sso.js';
 import partyRoutes from './routes/parties.js';
 import collectorRoutes from './routes/collectors.js';
 import receiverRoutes from './routes/receivers.js';
@@ -27,6 +28,7 @@ app.use(express.json({ limit: '256kb' }));
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'purosoul-cash', time: new Date().toISOString() }));
 
 app.use('/api/auth', authRoutes);
+app.use('/api/sso', ssoRoutes); // central sign-on directory (shared-secret guarded)
 app.use('/api/parties', partyRoutes);
 app.use('/api/collectors', collectorRoutes);
 app.use('/api/receivers', receiverRoutes);
