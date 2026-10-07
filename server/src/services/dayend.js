@@ -1,4 +1,5 @@
 import { buildReport, buildHandoverReport, todayIST } from './report.js';
+import { eventDaySummary } from './eventReport.js';
 import { reportPdf } from './pdf.js';
 import { sendMail } from './email.js';
 import { getGlobalSettings } from '../models/Setting.js';
@@ -18,9 +19,10 @@ export async function sendDayEndReport(date = todayIST()) {
     return { sent: false, reason: 'No notification emails configured in Settings' };
   }
 
-  const [report, handovers] = await Promise.all([
+  const [report, handovers, events] = await Promise.all([
     buildReport({ type: 'daily', date }),
     buildHandoverReport({ from: date, to: date }),
+    eventDaySummary(date),
   ]);
 
   const attachments = [
@@ -36,8 +38,10 @@ export async function sendDayEndReport(date = todayIST()) {
 
   await sendMail({
     to: recipients,
-    subject: `Day-end report ${report.periodLabel}: ${formatINR(report.grandTotal)} collected (${report.grandCount}) • ${formatINR(handovers.grandTotal)} handed over (${handovers.grandCount})`,
-    html: dayEndHtml(report, handovers),
+    subject: `Day-end report ${report.periodLabel}: ${formatINR(report.grandTotal)} collected (${report.grandCount}) • ${formatINR(handovers.grandTotal)} handed over (${handovers.grandCount})${
+      events.bills ? ` • ${formatINR(events.amount)} event sales (${events.bills})` : ''
+    }`,
+    html: dayEndHtml(report, handovers, events),
     attachments,
   });
 
@@ -49,10 +53,12 @@ export async function sendDayEndReport(date = todayIST()) {
     grandCount: report.grandCount,
     handoverTotal: handovers.grandTotal,
     handoverCount: handovers.grandCount,
+    eventSalesTotal: events.amount,
+    eventSalesCount: events.bills,
   };
 }
 
-function dayEndHtml(report, handovers) {
+function dayEndHtml(report, handovers, events) {
   const cell = 'padding:6px 12px;font-size:13px';
   const collectorRows = report.groups
     .map(
@@ -115,7 +121,36 @@ function dayEndHtml(report, handovers) {
         <td style="${cell};color:#185997;font-weight:700;text-align:right">${formatINR(handovers?.grandTotal || 0)}</td>
       </tr>
     </table>
+    ${eventSalesHtml(events, cell)}
   </div>`;
+}
+
+/** Event stall sales for the day, split cash / UPI — omitted on days with none. */
+function eventSalesHtml(events, cell) {
+  if (!events?.bills) return '';
+  const rows = events.events
+    .map(
+      (e) =>
+        `<tr><td style="${cell};color:#0f172a">${e.name}<br/><span style="color:#94a3b8;font-size:11px">Cash ${formatINR(e.cash)} • UPI ${formatINR(e.upi)} • ${e.quantity} units</span></td>` +
+        `<td style="${cell};color:#64748b;text-align:center">${e.bills}</td>` +
+        `<td style="${cell};color:#0f172a;font-weight:600;text-align:right">${formatINR(e.amount)}</td></tr>`
+    )
+    .join('');
+  return `
+    <h3 style="color:#0f172a;font-size:14px;margin:16px 0 6px">Event sales</h3>
+    <table style="border-collapse:collapse;background:#f8fafc;border-radius:8px;width:100%">
+      <tr>
+        <th style="${cell};color:#64748b;text-align:left">Event</th>
+        <th style="${cell};color:#64748b;text-align:center">Bills</th>
+        <th style="${cell};color:#64748b;text-align:right">Amount</th>
+      </tr>
+      ${rows}
+      <tr>
+        <td style="${cell};color:#185997;font-weight:700">TOTAL EVENT SALES</td>
+        <td style="${cell};color:#185997;font-weight:700;text-align:center">${events.bills}</td>
+        <td style="${cell};color:#185997;font-weight:700;text-align:right">${formatINR(events.amount)}</td>
+      </tr>
+    </table>`;
 }
 
 let dayEndTimer = null;
