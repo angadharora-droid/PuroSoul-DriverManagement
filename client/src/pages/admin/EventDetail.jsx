@@ -120,7 +120,7 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
                     className="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50"
                   >
                     <Icon name="photo" className="h-3.5 w-3.5" />
-                    Screenshot
+                    Photo
                   </button>
                 )}
                 {onCancel && ['pending_otp', 'expired', 'failed'].includes(b.status) && (
@@ -379,7 +379,7 @@ export default function EventDetail({ readOnly = false }) {
         </Card>
         <Card
           title="Day-wise"
-          subtitle={shotCount ? `${shotCount} UPI screenshot${shotCount === 1 ? '' : 's'} on file` : 'No UPI screenshots yet'}
+          subtitle={shotCount ? `${shotCount} UPI payment photo${shotCount === 1 ? '' : 's'} on file` : 'No UPI payment photos yet'}
           actions={
             shotCount > 0 &&
             Array.from({ length: shotParts }, (_, p) => (
@@ -391,7 +391,7 @@ export default function EventDetail({ readOnly = false }) {
                 loading={downloading === `shots-all-${p + 1}`}
                 onClick={() => shotsPdf(`shots-all-${p + 1}`, { part: p + 1 }, shotParts > 1 ? `part${p + 1}` : 'all')}
               >
-                {shotParts > 1 ? `Screenshots part ${p + 1}` : 'All screenshots PDF'}
+                {shotParts > 1 ? `Photos part ${p + 1}` : 'All photos PDF'}
               </Button>
             ))
           }
@@ -408,7 +408,7 @@ export default function EventDetail({ readOnly = false }) {
                   key={p}
                   onClick={() => shotsPdf(`shots-${d.date}-${p + 1}`, { date: d.date, part: p + 1 }, d.date)}
                   disabled={downloading === `shots-${d.date}-${p + 1}`}
-                  title={`Download this day's UPI screenshots as a PDF`}
+                  title={`Download this day's UPI payment photos as a PDF`}
                   className="inline-flex min-h-9 cursor-pointer items-center gap-1 rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50 disabled:cursor-wait disabled:opacity-60"
                 >
                   <Icon name="photo" className="h-3.5 w-3.5" />
@@ -422,7 +422,7 @@ export default function EventDetail({ readOnly = false }) {
 
       <Card
         title={`Bills (${report.bills.length})`}
-        subtitle="Cash bills are confirmed by the customer's OTP, UPI bills by the stored payment screenshot. Bills can't be changed once confirmed."
+        subtitle="Cash bills are confirmed by the customer's OTP, UPI bills by the stored payment photo. Bills can't be changed once confirmed."
         actions={
           <div className="flex flex-wrap gap-2">
             <div className="relative w-56">

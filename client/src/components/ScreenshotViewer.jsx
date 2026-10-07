@@ -5,7 +5,7 @@ import { formatINR, formatDateTime } from '../utils/format';
 
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-/** Shows the UPI payment screenshot stored with an event bill (fetched with the JWT, never a public URL). */
+/** Shows the UPI payment photo stored with an event bill (fetched with the JWT, never a public URL). */
 export default function ScreenshotViewer({ bill, onClose }) {
   const [shot, setShot] = useState({ url: '', blob: null, error: '' });
 
@@ -31,7 +31,7 @@ export default function ScreenshotViewer({ bill, onClose }) {
   const label = bill.billLabel || bill.ref;
 
   return (
-    <Modal open title={`UPI screenshot — bill ${label}`} onClose={onClose} wide>
+    <Modal open title={`UPI payment photo — bill ${label}`} onClose={onClose} wide>
       <div className="mb-3 flex flex-wrap items-start justify-between gap-x-4 gap-y-1 text-sm">
         <div className="min-w-0">
           <p className="truncate font-semibold text-slate-900">{bill.customerName}</p>
@@ -46,7 +46,7 @@ export default function ScreenshotViewer({ bill, onClose }) {
         {shot.error ? (
           <div className="p-4"><Alert>{shot.error}</Alert></div>
         ) : shot.url ? (
-          <img src={shot.url} alt={`UPI payment screenshot for bill ${label}`} className="max-h-[65vh] w-auto object-contain" />
+          <img src={shot.url} alt={`UPI payment photo for bill ${label}`} className="max-h-[65vh] w-auto object-contain" />
         ) : (
           <Spinner className="h-7 w-7 text-brand-700" />
         )}
