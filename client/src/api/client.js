@@ -114,8 +114,12 @@ export const api = {
   put: (path, body) => request(path, { method: 'PUT', body }),
 };
 
-/** Authenticated file download (CSV/PDF) via blob — keeps the JWT in the header. */
-export async function apiDownload(path, params, fallbackName) {
+/**
+ * Authenticated fetch of a file (PDF, CSV, image) — keeps the JWT in the
+ * header. Resolves to { blob, filename } (filename from Content-Disposition
+ * when the server exposes it, else fallbackName).
+ */
+export async function apiBlob(path, params, fallbackName) {
   const url = new URL(path, API_BASE);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
@@ -130,12 +134,22 @@ export async function apiDownload(path, params, fallbackName) {
   }
   const disposition = res.headers.get('Content-Disposition') || '';
   const match = disposition.match(/filename="?([^";]+)"?/);
-  const blob = await res.blob();
+  return { blob: await res.blob(), filename: match ? match[1] : fallbackName || 'download' };
+}
+
+/** Save a blob to the device as a file. */
+export function saveBlob(blob, filename) {
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = match ? match[1] : fallbackName || 'download';
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(a.href);
+}
+
+/** Authenticated file download (CSV/PDF) via blob — keeps the JWT in the header. */
+export async function apiDownload(path, params, fallbackName) {
+  const { blob, filename } = await apiBlob(path, params, fallbackName);
+  saveBlob(blob, filename);
 }

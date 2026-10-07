@@ -7,9 +7,10 @@ import Transaction from '../models/Transaction.js';
 import { requireAuth } from '../middleware/auth.js';
 import { sendSms } from '../services/sms.js';
 import { notifyVerified } from '../services/notify.js';
+import { collectionOtpMessage } from '../services/smsTemplates.js';
 import { receiptPdf } from '../services/pdf.js';
 import { toCsv } from '../utils/csv.js';
-import { maskMobile, formatINR, dateRange, formatDateTime } from '../utils/format.js';
+import { maskMobile, dateRange, formatDateTime } from '../utils/format.js';
 import {
   generateOtp,
   hashOtp,
@@ -23,10 +24,6 @@ import {
 } from '../utils/otp.js';
 
 const router = Router();
-const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
-// DLT requires the registered entity/brand name in the SMS body — keep this
-// identical to the brand phrase in the approved templates and on the portal.
-const SMS_BRAND = process.env.SMS_BRAND_NAME || 'Puro Soul - Hotel Centre Point';
 
 // Abuse guard: at most 10 OTP sends (new + resend) per collector per 15 minutes.
 const otpSendLimiter = rateLimit({
@@ -38,20 +35,6 @@ const otpSendLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: 'Too many OTP requests — please wait a few minutes before trying again' },
 });
-
-function otpMessage(code, amount) {
-  const ttl = process.env.OTP_TTL_MINUTES || 5;
-  return {
-    type: 'otp',
-    template: 'collection-otp',
-    text: `${code} is your OTP for confirming cash collection of ${formatINR(amount)} for ${SMS_BRAND}. Share this OTP only with the collector present with you. Valid for ${ttl} minutes.`,
-    vars: { otp: code, amount: formatINR(amount) },
-    // {#var#} fill order of the registered DLT template — keep in sync with the
-    // portal. "Rs." stays in the template's static text; the amount keeps its
-    // comma/decimal, so its DLT variable is Alphanumeric (Number rejects those).
-    dltVars: [code, formatINR(amount).replace('Rs. ', ''), String(ttl)],
-  };
-}
 
 function collectorView(txn, extra = {}) {
   return {
@@ -112,7 +95,7 @@ router.post('/', requireAuth('collector', 'receiver'), otpSendLimiter, async (re
   });
 
   try {
-    await sendSms(otpMobile, otpMessage(code, amt));
+    await sendSms(otpMobile, collectionOtpMessage(code, amt));
   } catch (err) {
     txn.status = 'failed';
     txn.notifyError = `otp-sms: ${err.message}`;
@@ -168,7 +151,7 @@ router.post('/:id/resend-otp', requireAuth('collector', 'receiver'), otpSendLimi
   // default has changed since (another collector may have switched it).
   const resendTo = txn.otpMobile || txn.party.mobile;
   try {
-    await sendSms(resendTo, otpMessage(code, txn.amount));
+    await sendSms(resendTo, collectionOtpMessage(code, txn.amount));
   } catch (err) {
     // A failed send must not cost the collector a resend or restart the cooldown.
     txn.otpResendCount -= 1;

@@ -12,6 +12,7 @@ import collectionRoutes from './routes/collections.js';
 import handoverRoutes from './routes/handovers.js';
 import reportRoutes from './routes/reports.js';
 import settingsRoutes from './routes/settings.js';
+import eventRoutes from './routes/events.js';
 import { errorHandler, notFound } from './middleware/error.js';
 import { scheduleDayEndReport } from './services/dayend.js';
 
@@ -23,7 +24,13 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(cors({ origin: (process.env.CLIENT_ORIGIN || 'http://localhost:5173').split(',') }));
-app.use(express.json({ limit: '256kb' }));
+
+// Event bills carry the UPI payment screenshot inline, so that one route gets
+// a larger body allowance; every other route keeps the tight default.
+const EVENT_BILL_PATH = /^\/api\/events\/[^/]+\/bills\/?$/;
+const jsonDefault = express.json({ limit: '256kb' });
+const jsonEventBill = express.json({ limit: '8mb' });
+app.use((req, res, next) => (EVENT_BILL_PATH.test(req.path) ? jsonEventBill : jsonDefault)(req, res, next));
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, service: 'purosoul-cash', time: new Date().toISOString() }));
 
@@ -37,6 +44,7 @@ app.use('/api/collections', collectionRoutes);
 app.use('/api/handovers', handoverRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/events', eventRoutes);
 
 app.use(notFound);
 app.use(errorHandler);
