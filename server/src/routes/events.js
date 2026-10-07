@@ -49,6 +49,7 @@ const billOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
   keyGenerator: (req) => `event-bill:${req.user.id}`,
+  skip: (req) => req.body?.paymentMode === 'upi', // UPI bills send no SMS
   validate: false,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
@@ -61,7 +62,7 @@ const customerOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => `event-customer:${normalizeMobile(req.body?.customerMobile)}`,
-  skip: (req) => !/^\d{10}$/.test(normalizeMobile(req.body?.customerMobile)),
+  skip: (req) => req.body?.paymentMode === 'upi' || !/^\d{10}$/.test(normalizeMobile(req.body?.customerMobile)),
   skipFailedRequests: true,
   validate: false,
   standardHeaders: 'draft-8',
@@ -300,12 +301,29 @@ async function loadOwnBill(req) {
   return bill;
 }
 
-/** Admins see every bill; a collector only their own. */
+/**
+ * True when the signed-in receiver keeps stock for this event — they may read
+ * (never change) its bills and report.
+ */
+async function isEventStockKeeper(req, eventId) {
+  if (req.user.role !== 'receiver') return false;
+  return Boolean(await Event.exists({ _id: eventId, stockKeeper: req.user.id }));
+}
+
+/** Admins see every bill; a collector their own; the event's stock keeper every bill of that event (read-only). */
 async function loadViewableBill(req) {
   const bill = await EventBill.findById(req.params.billId);
   if (!bill) throw httpError(404, 'Bill not found');
-  if (req.user.role !== 'admin' && String(bill.biller) !== req.user.id) throw httpError(403, 'Not your bill');
+  const allowed =
+    req.user.role === 'admin' || String(bill.biller) === req.user.id || (await isEventStockKeeper(req, bill.event));
+  if (!allowed) throw httpError(403, 'Not your bill');
   return bill;
+}
+
+/** Event reports: admins, and (read-only) the event's stock keeper. */
+async function assertCanReadEvent(req) {
+  if (req.user.role === 'admin' || (await isEventStockKeeper(req, req.params.id))) return;
+  throw httpError(403, 'You can only see reports for events where you keep the stock');
 }
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
@@ -420,7 +438,7 @@ router.post('/bills/:billId/cancel', requireAuth('collector', 'admin'), async (r
 });
 
 /** The stored UPI screenshot, served from the database. */
-router.get('/bills/:billId/screenshot', requireAuth('admin', 'collector'), async (req, res) => {
+router.get('/bills/:billId/screenshot', requireAuth('admin', 'collector', 'receiver'), async (req, res) => {
   const bill = await loadViewableBill(req);
   if (!bill.screenshot) return res.status(404).json({ error: 'This bill has no screenshot' });
   const shot = await EventAttachment.findById(bill.screenshot).select('+data');
@@ -434,10 +452,10 @@ router.get('/bills/:billId/screenshot', requireAuth('admin', 'collector'), async
 });
 
 /** Customer mini bill PDF (verified bills only). */
-router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'collector'), async (req, res) => {
+router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'collector', 'receiver'), async (req, res) => {
   const bill = await loadViewableBill(req);
   if (bill.status !== 'verified') {
-    return res.status(400).json({ error: 'The bill is only available once the customer has confirmed the OTP' });
+    return res.status(400).json({ error: 'The bill is only available once it is confirmed' });
   }
   const event = await Event.findById(bill.event).select('name venue');
   const pdf = await eventBillPdf(bill, event);
@@ -447,10 +465,10 @@ router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'collector'), async (
 });
 
 /**
- * Raise a mini bill and send the OTP to the CUSTOMER's mobile. The collector
- * sends quantities only — every price comes from the admin's item list. A UPI
- * bill must carry its payment screenshot, and the bill and screenshot are
- * saved together before any SMS goes out, so neither can exist without the other.
+ * Raise a mini bill. The collector sends quantities only — every price comes
+ * from the admin's item list. Cash: the OTP goes to the CUSTOMER's mobile and
+ * the bill waits for it. UPI: no OTP — the bill must carry its payment
+ * screenshot, the two are saved together, and the bill is final at once.
  */
 router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, customerOtpLimiter, async (req, res) => {
   const event = await Event.findById(req.params.id);
@@ -467,7 +485,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
   if (customerName.length > 80) return res.status(400).json({ error: 'Customer name is too long' });
   const customerMobile = normalizeMobile(body.customerMobile);
   if (!/^[6-9]\d{9}$/.test(customerMobile)) {
-    return res.status(400).json({ error: "Enter the customer's 10-digit mobile number — the OTP goes there" });
+    return res.status(400).json({ error: "Enter the customer's 10-digit mobile number" });
   }
 
   const qtyByItem = new Map();
@@ -517,13 +535,10 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     shot = decodeScreenshot(body.screenshot);
 
     // One UPI payment can only ever pay for one bill — anywhere, at any event.
-    const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo biller status');
+    const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo');
     if (reused) {
-      const mine = String(reused.biller) === req.user.id && reused.status !== 'verified';
       return res.status(409).json({
-        error: `This screenshot is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own screenshot.${
-          mine ? ' If that bill was a mistake, cancel it under Recent bills first.' : ''
-        }`,
+        error: `This screenshot is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own screenshot.`,
       });
     }
     if (upiRef) {
@@ -539,9 +554,20 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     ? await EventAttachment.create({ ...shot, bill: billId, event: event._id, uploadedBy: req.user.id })
     : null;
 
-  const code = generateOtp();
+  const isUpi = paymentMode === 'upi';
+  const code = isUpi ? null : generateOtp();
   let bill;
   try {
+    // UPI: the stored screenshot is the proof of payment, so the bill is final
+    // (numbered, verified) the moment it is saved. Cash: wait for the customer's OTP.
+    const confirmation = isUpi
+      ? {
+          status: 'verified',
+          verifiedAt: new Date(),
+          billNo: (await Event.findByIdAndUpdate(event._id, { $inc: { billSeq: 1 } }, { new: true, projection: { billSeq: 1 } }))
+            .billSeq,
+        }
+      : { status: 'pending_otp', otpCodeHash: await hashOtp(code), otpExpiresAt: otpExpiry(), lastOtpSentAt: new Date() };
     bill = await EventBill.create({
       _id: billId,
       event: event._id,
@@ -557,10 +583,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
       upiRef,
       screenshot: shotDoc?._id || null,
       screenshotHash: shot?.sha256 || '',
-      otpCodeHash: await hashOtp(code),
-      otpExpiresAt: otpExpiry(),
-      lastOtpSentAt: new Date(),
-      status: 'pending_otp',
+      ...confirmation,
       collectorIp: req.ip || '',
       deviceInfo: (req.get('user-agent') || '').slice(0, 300),
     });
@@ -571,6 +594,10 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     throw err;
   }
 
+  if (isUpi) {
+    return res.status(201).json({ bill: billView(bill, event), verified: true, message: `Bill ${bill.billLabel} saved` });
+  }
+
   try {
     await sendSms(customerMobile, collectionOtpMessage(code, totalAmount));
   } catch (err) {
@@ -578,9 +605,9 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     bill.notifyError = `otp-sms: ${err.message}`;
     await bill.save();
     console.error('[event-otp] SMS send failed:', err.message);
-    // The bill (and screenshot) are safely stored — the biller can resend from the OTP screen.
+    // The bill is safely stored — the biller can resend from the OTP screen.
     return res.status(502).json({
-      error: 'Could not send the OTP SMS to the customer. The bill and screenshot are saved — tap Resend OTP.',
+      error: 'Could not send the OTP SMS to the customer. The bill is saved — tap Resend OTP.',
       bill: billView(bill, event),
     });
   }
@@ -679,8 +706,9 @@ router.put('/:id', requireAuth('admin'), async (req, res) => {
   res.json({ event: adminEventView(saved, summaries.get(String(event._id))) });
 });
 
-/** Whole-event report as JSON (admin screen), PDF or CSV. */
-router.get('/:id/report', requireAuth('admin'), async (req, res) => {
+/** Whole-event report as JSON (admin / stock-keeper screen), PDF or CSV. */
+router.get('/:id/report', requireAuth('admin', 'receiver'), async (req, res) => {
+  await assertCanReadEvent(req);
   const report = await buildEventReport(req.params.id);
   if (!report) return res.status(404).json({ error: 'Event not found' });
   const format = req.query.format || 'json';
@@ -759,7 +787,8 @@ router.get('/:id/report', requireAuth('admin'), async (req, res) => {
  * Every stored UPI screenshot as one printable PDF — whole event or one day
  * (?date=YYYY-MM-DD) — split into parts of SCREENSHOTS_PER_PDF (?part=2…).
  */
-router.get('/:id/screenshots.pdf', requireAuth('admin'), async (req, res) => {
+router.get('/:id/screenshots.pdf', requireAuth('admin', 'receiver'), async (req, res) => {
+  await assertCanReadEvent(req);
   const event = await Event.findById(req.params.id).select('name venue');
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const date = req.query.date ? String(req.query.date) : '';

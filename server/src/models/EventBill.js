@@ -5,11 +5,16 @@ export const PAYMENT_MODES = ['cash', 'upi'];
 
 /**
  * A mini bill raised by a collector at an event stall: who bought, how many of
- * each item (priced by the admin), and how they paid. Confirmed by an OTP sent
- * to the CUSTOMER's mobile, exactly like a party collection. Once verified it
- * is immutable except for notification bookkeeping.
+ * each item (priced by the admin), and how they paid. A cash bill is confirmed
+ * by an OTP sent to the CUSTOMER's mobile, exactly like a party collection; a
+ * UPI bill is confirmed by its payment screenshot and is verified on save.
+ * Once verified it is immutable except for notification bookkeeping.
  */
 const MUTABLE_AFTER_VERIFY = new Set(['notifyError', 'updatedAt']);
+
+function requiresOtp() {
+  return this.paymentMode !== 'upi';
+}
 
 const lineSchema = new mongoose.Schema(
   {
@@ -66,8 +71,10 @@ const billSchema = new mongoose.Schema(
     screenshot: { type: mongoose.Schema.Types.ObjectId, ref: 'EventAttachment', default: null },
     screenshotHash: { type: String, default: '' },
 
-    otpCodeHash: { type: String, required: true },
-    otpExpiresAt: { type: Date, required: true },
+    // Cash bills only — a UPI bill is proven by its stored payment screenshot
+    // and is final the moment it is saved, so it never has an OTP.
+    otpCodeHash: { type: String, required: requiresOtp },
+    otpExpiresAt: { type: Date, required: requiresOtp },
     otpAttempts: { type: Number, default: 0 },
     otpResendCount: { type: Number, default: 0 },
     lastOtpSentAt: { type: Date },

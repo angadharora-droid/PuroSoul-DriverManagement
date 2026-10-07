@@ -303,7 +303,9 @@ export function eventBillPdf(bill, event) {
 
   doc.font('Helvetica').fontSize(7).fillColor(MUTED);
   doc.text(
-    `Confirmed by the customer with the OTP sent to +91 ••••••${String(bill.customerMobile).slice(-4)}.`,
+    bill.paymentMode === 'upi'
+      ? 'Paid by UPI — the payment screenshot is on file with this bill.'
+      : `Confirmed by the customer with the OTP sent to +91 ••••••${String(bill.customerMobile).slice(-4)}.`,
     MINI_M,
     y,
     { width: W, align: 'center' }
@@ -447,7 +449,7 @@ export function eventReportPdf(report) {
     { label: 'Amount', x: 470, w: 75, align: 'right' },
   ];
   const muted = Object.fromEntries(billCols.map((_, i) => [i, MUTED]));
-  y = evSection(doc, y, `Bills (${report.bills.length})`, 'Verified bills only, each confirmed by an OTP sent to the customer.');
+  y = evSection(doc, y, `Bills (${report.bills.length})`, 'Confirmed bills only — cash bills by an OTP sent to the customer, UPI bills by the stored payment screenshot.');
   y = evTableHeader(doc, y, billCols);
   for (const b of report.bills) {
     y = evSpace(doc, y, 36, billCols);
