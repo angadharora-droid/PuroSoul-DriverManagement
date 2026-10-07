@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { api } from '../../api/client';
 import { Button, Field, Alert, inputClass, EmptyState, CardSkeleton, PageHeader, SegmentedControl } from '../../components/ui';
@@ -25,6 +25,7 @@ export default function EventStock() {
   const toast = useToast();
   const { user } = useAuth();
   const { id: preferredId } = useParams(); // admin arrives from an event's report page
+  const navigate = useNavigate();
   const [events, setEvents] = useState(null);
   const [eventId, setEventId] = useState('');
   const [data, setData] = useState(null); // { event, entries }
@@ -140,6 +141,12 @@ export default function EventStock() {
             {events[0].venue && <p className="truncate text-xs text-slate-500">{events[0].venue}</p>}
           </div>
         </div>
+      )}
+
+      {user?.role === 'receiver' && eventId && (
+        <Button variant="secondary" icon="receipt" className="w-full" onClick={() => navigate(`/events/report/${eventId}`)}>
+          See all bills &amp; report
+        </Button>
       )}
 
       {loadError && <Alert>{loadError}</Alert>}

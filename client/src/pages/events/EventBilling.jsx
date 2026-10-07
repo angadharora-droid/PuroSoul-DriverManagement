@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, apiBlob, saveBlob } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge, PageHeader, Spinner } from '../../components/ui';
+import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge, PageHeader, Spinner, Modal } from '../../components/ui';
 import Icon from '../../components/icons';
 import ScreenshotViewer from '../../components/ScreenshotViewer';
 import { useToast } from '../../components/toast';
@@ -165,6 +165,7 @@ export default function EventBilling() {
   const [busy, setBusy] = useState(false);
   const [resendAvailableAt, setResendAvailableAt] = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [confirmUpi, setConfirmUpi] = useState(false);
 
   const [recent, setRecent] = useState(null);
   const [viewShot, setViewShot] = useState(null);
@@ -268,36 +269,53 @@ export default function EventBilling() {
     setStep('otp');
   }
 
-  async function sendOtp(e) {
+  /** Validates the form; cash goes straight to the OTP, UPI asks for a final check first. */
+  function submitBill(e) {
     e.preventDefault();
     setError('');
     setInfo('');
-    const name = form.customerName.trim();
-    if (name.length < 2) return setError("Enter the customer's name");
+    if (form.customerName.trim().length < 2) return setError("Enter the customer's name");
     if (!/^[6-9]\d{9}$/.test(form.customerMobile)) return setError("Enter the customer's 10-digit mobile number");
     if (!lines.length) return setError('Enter the quantity for at least one item');
     if (overStock) return setError(`Only ${Math.max(0, overStock.available)} × ${overStock.name} left in stock`);
     if (!form.paymentMode) return setError('Choose how the customer paid — cash or UPI');
     if (form.paymentMode === 'upi' && !form.screenshot) return setError('Attach the UPI payment screenshot');
+    // A UPI bill is final the moment it's saved (no OTP to back out of), so confirm it first.
+    if (form.paymentMode === 'upi') return setConfirmUpi(true);
+    saveBill();
+  }
 
+  async function saveBill() {
     setBusy(true);
     try {
       const data = await api.post(`/api/events/${eventId}/bills`, {
-        customerName: name,
+        customerName: form.customerName.trim(),
         customerMobile: form.customerMobile,
         items: lines.map((l) => ({ itemId: l.id, quantity: l.q })),
         paymentMode: form.paymentMode,
         upiRef: form.paymentMode === 'upi' ? form.upiRef : '',
         screenshot: form.paymentMode === 'upi' ? dataUrlToBase64(form.screenshot.dataUrl) : undefined,
       });
-      // The bill and its screenshot are on the server now. The form stays in
-      // memory so a cancelled OTP (e.g. a mistyped number) can be fixed and resent.
+      // The bill (and any screenshot) is on the server now — the local draft has done its job.
       dropDraft(draftKey);
       billFromForm.current = true;
+      if (data.verified) {
+        // UPI: final on save, no OTP.
+        setConfirmUpi(false);
+        setBill(data.bill);
+        setForm(EMPTY_FORM);
+        setRestored(false);
+        setStep('done');
+        loadEvents(); // stock moved
+        loadRecent();
+        return;
+      }
+      // Cash: the form stays in memory so a cancelled OTP (e.g. a mistyped number) can be fixed and resent.
       setResendAvailableAt(Date.now() + data.bill.resendCooldownSeconds * 1000);
       enterOtpStep(data.bill, data.otpSentTo);
       loadRecent();
     } catch (err) {
+      setConfirmUpi(false);
       if (err.body?.bill) {
         // Saved, but the OTP SMS didn't go out — carry on to the OTP screen to resend.
         dropDraft(draftKey);
@@ -494,7 +512,9 @@ export default function EventBilling() {
             </div>
             <h2 className="text-lg font-bold text-slate-900">Bill {bill.billLabel} confirmed</h2>
             <p className="mx-auto mt-1 max-w-xs text-sm leading-relaxed text-slate-500">
-              {bill.customerName} confirmed the purchase by OTP. Share the bill with them below.
+              {bill.paymentMode === 'upi'
+                ? 'Saved with the UPI payment screenshot. Share the bill with the customer below.'
+                : `${bill.customerName} confirmed the purchase by OTP. Share the bill with them below.`}
             </p>
           </div>
 
@@ -676,7 +696,7 @@ export default function EventBilling() {
             </div>
           )}
 
-          <form onSubmit={sendOtp} className="mt-5 space-y-5">
+          <form onSubmit={submitBill} className="mt-5 space-y-5">
             <div className="space-y-4">
               <Field label="Customer name" required>
                 <input
@@ -689,7 +709,7 @@ export default function EventBilling() {
                   placeholder="e.g. Rahul Sharma"
                 />
               </Field>
-              <Field label="Customer mobile" required hint="The OTP goes to this number — the customer reads it back to you">
+              <Field label="Customer mobile" required hint="Printed on the bill. For cash, the OTP goes here and the customer reads it back to you.">
                 <div className="relative">
                   <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-sm font-semibold text-slate-400" aria-hidden="true">
                     +91
@@ -751,8 +771,8 @@ export default function EventBilling() {
             <div>
               <p className="mb-2 text-sm font-medium text-slate-700">Paid by<span className="ml-0.5 text-red-500" aria-hidden="true">*</span></p>
               <div className="grid grid-cols-2 gap-2">
-                <PayOption active={form.paymentMode === 'cash'} icon="banknotes" title="Cash" subtitle="Collected in hand" onClick={() => setField('paymentMode', 'cash')} />
-                <PayOption active={form.paymentMode === 'upi'} icon="phone" title="UPI" subtitle="Screenshot needed" onClick={() => setField('paymentMode', 'upi')} />
+                <PayOption active={form.paymentMode === 'cash'} icon="banknotes" title="Cash" subtitle="OTP to customer" onClick={() => setField('paymentMode', 'cash')} />
+                <PayOption active={form.paymentMode === 'upi'} icon="phone" title="UPI" subtitle="Screenshot, no OTP" onClick={() => setField('paymentMode', 'upi')} />
               </div>
             </div>
 
@@ -818,21 +838,65 @@ export default function EventBilling() {
 
             <Button
               type="submit"
-              icon={busy ? undefined : 'send'}
+              icon={busy ? undefined : form.paymentMode === 'upi' ? 'check' : 'send'}
               className="w-full py-3"
               loading={busy}
               disabled={shotBusy || totalQty === 0 || !form.paymentMode}
             >
-              {busy ? 'Sending OTP…' : totalQty > 0 ? `Send OTP • ${formatINR(totalAmount)}` : 'Send OTP to customer'}
+              {form.paymentMode === 'upi'
+                ? busy
+                  ? 'Saving bill…'
+                  : `Save UPI bill${totalQty > 0 ? ` • ${formatINR(totalAmount)}` : ''}`
+                : busy
+                  ? 'Sending OTP…'
+                  : totalQty > 0
+                    ? `Send OTP • ${formatINR(totalAmount)}`
+                    : 'Send OTP to customer'}
             </Button>
 
             <p className="flex items-start gap-1.5 text-xs leading-relaxed text-slate-400">
               <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              The OTP goes to the customer's phone. Ask them for the code once they've paid.
+              {form.paymentMode === 'upi'
+                ? 'No OTP for UPI — the payment screenshot is the proof. The bill is final once saved.'
+                : "Cash bills: the OTP goes to the customer's phone. Ask them for the code once they've paid."}
             </p>
           </form>
         </div>
       </div>
+
+      <Modal open={confirmUpi} title="Save this UPI bill?" onClose={() => !busy && setConfirmUpi(false)}>
+        <div className="space-y-3 text-sm">
+          <div className="rounded-xl bg-slate-50 p-3.5">
+            <p className="font-semibold text-slate-900">{form.customerName.trim()}</p>
+            <p className="tnum text-xs text-slate-500">+91 {form.customerMobile}</p>
+            <div className="my-2.5 border-t border-dashed border-slate-300" />
+            {lines.map((l) => (
+              <div key={l.id} className="flex justify-between gap-3 py-0.5">
+                <span className="text-slate-700">{l.q} × {l.name}</span>
+                <span className="tnum shrink-0 font-semibold text-slate-900">{formatINR(l.q * l.price)}</span>
+              </div>
+            ))}
+            <div className="my-2.5 border-t border-dashed border-slate-300" />
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-slate-900">Total</span>
+              <span className="tnum text-lg font-bold text-brand-800">{formatINR(totalAmount)}</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {form.screenshot && (
+              <img src={form.screenshot.dataUrl} alt="UPI payment screenshot" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+            )}
+            <p className="text-xs leading-relaxed text-slate-600">
+              Check the screenshot shows <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> received
+              {form.upiRef ? <> (UTR <span className="tnum font-mono">{form.upiRef}</span>)</> : ''}. No OTP is sent for UPI — once saved, the bill can't be changed.
+            </p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirmUpi(false)}>Go back</Button>
+            <Button icon={busy ? undefined : 'check'} loading={busy} onClick={saveBill}>Save bill</Button>
+          </div>
+        </div>
+      </Modal>
 
       {recent && recent.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-card">

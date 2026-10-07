@@ -150,7 +150,11 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
   );
 }
 
-export default function EventDetail() {
+/**
+ * Event report. Admins get the full page; the event's stock-keeping receiver
+ * gets it readOnly — every bill, screenshot and export, but nothing editable.
+ */
+export default function EventDetail({ readOnly = false }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const toast = useToast();
@@ -163,6 +167,8 @@ export default function EventDetail() {
   const [mode, setMode] = useState('');
   const [visible, setVisible] = useState(BILLS_PAGE);
   const [showOthers, setShowOthers] = useState(false);
+  const backTo = readOnly ? '/events/stock' : '/admin/events';
+  const backLabel = readOnly ? 'Event stock' : 'All events';
 
   const load = useCallback(() => {
     setError('');
@@ -200,9 +206,9 @@ export default function EventDetail() {
   if (!report) {
     return (
       <div className="space-y-4">
-        <Link to="/admin/events" className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800">
+        <Link to={backTo} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800">
           <Icon name="arrow-left" className="h-4 w-4" />
-          All events
+          {backLabel}
         </Link>
         {error ? <Alert>{error}</Alert> : <TableSkeleton rows={8} cols={5} />}
       </div>
@@ -232,9 +238,9 @@ export default function EventDetail() {
 
   return (
     <div className="space-y-4">
-      <Link to="/admin/events" className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800">
+      <Link to={backTo} className="inline-flex min-h-9 items-center gap-1.5 text-sm font-semibold text-brand-700 hover:text-brand-800">
         <Icon name="arrow-left" className="h-4 w-4" />
-        All events
+        {backLabel}
       </Link>
 
       <PageHeader
@@ -248,14 +254,17 @@ export default function EventDetail() {
       />
       {/* Own wrapping row (not PageHeader actions) so four buttons never overflow a phone screen. */}
       <div className="flex flex-wrap gap-2">
-        {event.status === 'open' && (
+        {event.status === 'open' && !readOnly && (
           <>
             <Button icon="ticket" onClick={() => navigate(`/admin/events/${id}/billing`)}>Raise bill</Button>
             <Button variant="secondary" icon="cube" onClick={() => navigate(`/admin/events/${id}/stock`)}>Add stock</Button>
           </>
         )}
+        {event.status === 'open' && readOnly && (
+          <Button variant="secondary" icon="cube" onClick={() => navigate('/events/stock')}>Record stock</Button>
+        )}
         <Button variant="secondary" icon="refresh" onClick={load}>Refresh</Button>
-        <Button variant="secondary" icon="adjustments" onClick={() => setEditing(event)}>Edit</Button>
+        {!readOnly && <Button variant="secondary" icon="adjustments" onClick={() => setEditing(event)}>Edit</Button>}
         <Button variant="secondary" icon="download" loading={downloading === 'csv'} onClick={() => download('csv', `/api/events/${id}/report`, { format: 'csv' }, 'event-report.csv')}>
           CSV
         </Button>
@@ -282,15 +291,15 @@ export default function EventDetail() {
             <p className="mt-1 text-slate-800">{event.stockKeeper?.name || '—'}</p>
           </div>
         </div>
-        {(event.status === 'open' && (!event.billers.length || !event.stockKeeper || inactiveBillers.length > 0 || keeperLocked)) ||
+        {(!readOnly && event.status === 'open' && (!event.billers.length || !event.stockKeeper || inactiveBillers.length > 0 || keeperLocked)) ||
         overSold.length > 0 ? (
           <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
-            {event.status === 'open' && !event.billers.length && <Warn>No collectors can bill yet — edit the event to add them.</Warn>}
-            {event.status === 'open' && !event.stockKeeper && <Warn>No stock keeper — nothing can be billed until stock is recorded (assign a receiver, or use Add stock).</Warn>}
-            {event.status === 'open' && inactiveBillers.length > 0 && (
+            {!readOnly && event.status === 'open' && !event.billers.length && <Warn>No collectors can bill yet — edit the event to add them.</Warn>}
+            {!readOnly && event.status === 'open' && !event.stockKeeper && <Warn>No stock keeper — nothing can be billed until stock is recorded (assign a receiver, or use Add stock).</Warn>}
+            {!readOnly && event.status === 'open' && inactiveBillers.length > 0 && (
               <Warn>{inactiveBillers.map((b) => b.name).join(', ')} is deactivated and can't log in — reactivate on the Collectors page.</Warn>
             )}
-            {event.status === 'open' && keeperLocked && (
+            {!readOnly && event.status === 'open' && keeperLocked && (
               <Warn>
                 {event.stockKeeper.name} can't log in to record stock yet —{' '}
                 {event.stockKeeper.isActive ? 'set a password on the Receivers page' : 'reactivate them on the Receivers page'}.
@@ -413,7 +422,7 @@ export default function EventDetail() {
 
       <Card
         title={`Bills (${report.bills.length})`}
-        subtitle="Confirmed by OTP sent to each customer. UPI screenshots are stored with the bill and can't be changed."
+        subtitle="Cash bills are confirmed by the customer's OTP, UPI bills by the stored payment screenshot. Bills can't be changed once confirmed."
         actions={
           <div className="flex flex-wrap gap-2">
             <div className="relative w-56">
@@ -465,7 +474,7 @@ export default function EventDetail() {
             </Button>
           }
         >
-          {showOthers && <BillRows bills={report.otherBills} onScreenshot={setViewShot} onBillPdf={billPdf} onCancel={cancelBill} showStatus />}
+          {showOthers && <BillRows bills={report.otherBills} onScreenshot={setViewShot} onBillPdf={billPdf} onCancel={readOnly ? undefined : cancelBill} showStatus />}
         </Card>
       )}
 
@@ -504,14 +513,16 @@ export default function EventDetail() {
       </Card>
 
       <ScreenshotViewer bill={viewShot} onClose={() => setViewShot(null)} />
-      <EventModal
-        event={editing}
-        onClose={() => setEditing(null)}
-        onSaved={() => {
-          setEditing(null);
-          load();
-        }}
-      />
+      {!readOnly && (
+        <EventModal
+          event={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            load();
+          }}
+        />
+      )}
     </div>
   );
 }

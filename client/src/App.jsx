@@ -105,6 +105,8 @@ export default function App() {
         <Route path="/history" element={<History />} />
         <Route path="/events/billing" element={<RequireRole roles={['collector']}><EventBilling /></RequireRole>} />
         <Route path="/events/stock" element={<RequireRole roles={['receiver']}><EventStock /></RequireRole>} />
+        {/* The stock keeper sees every bill and the report of their event — read-only. */}
+        <Route path="/events/report/:id" element={<RequireRole roles={['receiver']}><EventDetail readOnly /></RequireRole>} />
       </Route>
 
       <Route
