@@ -115,7 +115,7 @@ const fakeBill = {
   totalAmount: 570,
   paymentMode: 'upi',
   upiRef: '412345678901',
-  receiverName: 'Test Receiver',
+  billerName: 'Test Collector',
   createdAt: new Date(),
   verifiedAt: new Date(),
 };
@@ -133,11 +133,11 @@ const eventReport = await eventReportPdf({
     { id: 'i1', name: '1L Bottle (case of 12)', price: 240, isActive: true, stockIn: 40, stockOut: 2, sold: 2, salesAmount: 480, remaining: 36 },
     { id: 'i2', name: '20L Jar', price: 90, isActive: true, stockIn: 20, stockOut: 0, sold: 1, salesAmount: 90, remaining: 19 },
   ],
-  receivers: [{ ...bucket, name: 'Test Receiver' }],
+  byBiller: [{ ...bucket, name: 'Test Collector' }],
   days: [{ ...bucket, date: '2026-10-07', label: '07 Oct 2026' }],
   bills: [billRowFake],
   statusCounts: { verified: { count: 1, amount: 570 }, cancelled: { count: 1, amount: 90 } },
-  stockEntries: [{ date: new Date(), itemName: '1L Bottle (case of 12)', kind: 'in', quantity: 40, note: 'Opening stock', enteredByName: 'Test Collector' }],
+  stockEntries: [{ date: new Date(), itemName: '1L Bottle (case of 12)', kind: 'in', quantity: 40, note: 'Opening stock', enteredByName: 'Test Receiver' }],
 });
 console.log(`ok  event report PDF rendered (${eventReport.length} bytes)`);
 

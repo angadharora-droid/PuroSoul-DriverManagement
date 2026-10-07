@@ -298,7 +298,7 @@ export function eventBillPdf(bill, event) {
   kv('TOTAL', formatINR(bill.totalAmount), { bold: true, size: 11 });
   kv('Paid by', bill.paymentMode === 'upi' ? 'UPI' : 'Cash', { bold: true });
   if (bill.upiRef) kv('UPI ref', bill.upiRef);
-  kv('Billed by', bill.receiverName || '—');
+  kv('Billed by', bill.billerName || '—');
   rule();
 
   doc.font('Helvetica').fontSize(7).fillColor(MUTED);
@@ -408,7 +408,7 @@ export function eventReportPdf(report) {
   y = evRow(doc, y + 3, itemCols, ['Total', '', report.stock.stockIn, report.stock.stockOut, totals.quantity, report.stock.remaining, formatINR(totals.amount)], { bold: true });
   y += 10;
 
-  // Receiver-wise and day-wise cash / UPI
+  // Collector-wise and day-wise cash / UPI
   const splitCols = (first) => [
     { label: first, x: 50, w: 165 },
     { label: 'Bills', x: 215, w: 45, align: 'right' },
@@ -434,7 +434,7 @@ export function eventReportPdf(report) {
     y = evRow(doc, y + 3, cols, ['Total', totals.bills, totals.quantity, amountOnly(totals.cash), amountOnly(totals.upi), amountOnly(totals.amount)], { bold: true });
     y += 10;
   };
-  splitTable('Receiver-wise', 'Cash column = cash each receiver should be holding from this event.', splitCols('Receiver'), report.receivers, (r) => r.name);
+  splitTable('Collector-wise', 'Cash column = cash each collector should be holding from this event.', splitCols('Billed by'), report.byBiller, (r) => r.name);
   splitTable('Day-wise', null, splitCols('Date'), report.days, (d) => d.label);
 
   // Every verified bill
@@ -456,7 +456,7 @@ export function eventReportPdf(report) {
       doc,
       y + 11,
       billCols,
-      ['', '', `+91 ${b.customerMobile}`, `by ${b.receiverName}`, b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'screenshot' : '') : '', ''],
+      ['', '', `+91 ${b.customerMobile}`, `by ${b.billerName}`, b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'screenshot' : '') : '', ''],
       { size: 7, colors: muted }
     );
     y += 26;
@@ -554,7 +554,7 @@ export async function eventScreenshotsPdf({ event, subtitle, bills, loadBatch, n
       line(`Bill ${b.billLabel || b.ref} • ${formatDateTime(b.date)}`, 0, 'Helvetica-Bold', 8.5, INK);
       line(`${b.customerName} • +91 ${b.customerMobile}`, 12, 'Helvetica', 8, INK);
       line(`${formatINR(b.totalAmount)} • UPI ref ${b.upiRef || '—'}`, 23, 'Helvetica', 7.5, MUTED);
-      line(`Billed by ${b.receiverName}${img ? ` • SHA-256 ${img.sha256.slice(0, 12)}…` : ''}`, 33, 'Helvetica', 7, MUTED);
+      line(`Billed by ${b.billerName}${img ? ` • SHA-256 ${img.sha256.slice(0, 12)}…` : ''}`, 33, 'Helvetica', 7, MUTED);
 
       const top = y + CAPTION_H;
       doc.roundedRect(x, top, COL_W, BOX_H, 4).strokeColor(LINE).stroke();

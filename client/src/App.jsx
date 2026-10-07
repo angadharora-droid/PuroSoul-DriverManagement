@@ -40,7 +40,7 @@ const EVENT_LINKS = {
 
 /**
  * Collector / receiver shell. The event tab appears only for people assigned
- * to an open event — receivers who bill there, or its stock-keeping collector.
+ * to an open event — collectors who bill there, or its stock-keeping receiver.
  */
 function FieldLayout() {
   const { user } = useAuth();
@@ -103,8 +103,8 @@ export default function App() {
         <Route path="/" element={<NewCollection />} />
         <Route path="/handover" element={<Handover />} />
         <Route path="/history" element={<History />} />
-        <Route path="/events/billing" element={<RequireRole roles={['receiver']}><EventBilling /></RequireRole>} />
-        <Route path="/events/stock" element={<RequireRole roles={['collector']}><EventStock /></RequireRole>} />
+        <Route path="/events/billing" element={<RequireRole roles={['collector']}><EventBilling /></RequireRole>} />
+        <Route path="/events/stock" element={<RequireRole roles={['receiver']}><EventStock /></RequireRole>} />
       </Route>
 
       <Route

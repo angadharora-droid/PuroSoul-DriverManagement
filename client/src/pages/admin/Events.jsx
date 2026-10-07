@@ -43,7 +43,7 @@ export default function Events() {
     <div className="space-y-4">
       <PageHeader
         title="Events"
-        subtitle="Stalls where receivers bill customers directly. You set the items and prices, who can bill, and which collector keeps the stock."
+        subtitle="Stalls where collectors bill customers directly. You set the items and prices, which collectors can bill, and which receiver keeps the stock."
         actions={<Button icon="plus" onClick={() => setEditing('new')}>New event</Button>}
       />
 
@@ -56,7 +56,7 @@ export default function Events() {
           <EmptyState
             icon="ticket"
             title="No events yet"
-            subtitle="Create an event, add its items and prices, then pick the receivers who bill and the collector who keeps stock."
+            subtitle="Create an event, add its items and prices, then pick the collectors who bill and the receiver who keeps stock."
             action={<Button icon="plus" onClick={() => setEditing('new')}>Create first event</Button>}
           />
         </div>
@@ -167,8 +167,9 @@ export function EventModal({ event, onClose, onSaved }) {
   const setItem = (key, patch) => setForm((f) => ({ ...f, items: f.items.map((it) => (it.key === key ? { ...it, ...patch } : it)) }));
 
   // Inactive people stay listed only if already assigned, so an edit never silently drops them.
-  const receiverChoices = receivers.filter((r) => r.isActive || form.billerIds.includes(String(r._id)));
-  const collectorChoices = collectors.filter((c) => c.isActive || String(c._id) === form.stockKeeperId);
+  const billerChoices = collectors.filter((c) => c.isActive || form.billerIds.includes(String(c._id)));
+  const keeperChoices = receivers.filter((r) => r.isActive || String(r._id) === form.stockKeeperId);
+  const keeper = receivers.find((r) => String(r._id) === form.stockKeeperId);
 
   function toggleBiller(id) {
     set('billerIds', form.billerIds.includes(id) ? form.billerIds.filter((x) => x !== id) : [...form.billerIds, id]);
@@ -287,13 +288,13 @@ export function EventModal({ event, onClose, onSaved }) {
 
         {/* Who bills */}
         <div>
-          <p className="mb-1 text-sm font-bold text-slate-700">Receivers who can bill</p>
-          <p className="mb-2.5 text-xs text-slate-500">They raise bills and the customer confirms each one by OTP. A receiver needs a password (Receivers page) to log in.</p>
-          {receiverChoices.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">No receivers yet — add them on the Receivers page.</p>
+          <p className="mb-1 text-sm font-bold text-slate-700">Collectors who can bill</p>
+          <p className="mb-2.5 text-xs text-slate-500">They raise bills on their phones and the customer confirms each one by OTP.</p>
+          {billerChoices.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-500">No collectors yet — add them on the Collectors page.</p>
           ) : (
             <div className="max-h-56 overflow-y-auto rounded-xl border border-slate-200">
-              {receiverChoices.map((r) => {
+              {billerChoices.map((r) => {
                 const id = String(r._id);
                 const checked = form.billerIds.includes(id);
                 return (
@@ -306,11 +307,7 @@ export function EventModal({ event, onClose, onSaved }) {
                       <span className="font-semibold text-slate-900">{r.name}</span>
                       {r.designation && <span className="text-slate-500"> — {r.designation}</span>}
                     </span>
-                    {!r.isActive ? (
-                      <span className="shrink-0 text-xs font-semibold text-slate-400">Inactive</span>
-                    ) : !r.canCollect ? (
-                      <span className="shrink-0 text-xs font-semibold text-amber-700">No login yet</span>
-                    ) : null}
+                    {!r.isActive && <span className="shrink-0 text-xs font-semibold text-slate-400">Inactive</span>}
                   </label>
                 );
               })}
@@ -319,12 +316,16 @@ export function EventModal({ event, onClose, onSaved }) {
         </div>
 
         {/* Who keeps stock */}
-        <Field label="Stock keeper (collector)" hint="The one collector who records stock coming in and going out. Billing can't go past the recorded stock.">
+        <Field
+          label="Stock keeper (receiver)"
+          hint="The one receiver who records stock coming in and going out. Billing can't go past the recorded stock."
+          error={keeper && !keeper.canCollect ? `${keeper.name} can't log in yet — set a password on the Receivers page first.` : undefined}
+        >
           <select className={inputClass} value={form.stockKeeperId} onChange={(e) => set('stockKeeperId', e.target.value)}>
             <option value="">— Not assigned yet —</option>
-            {collectorChoices.map((c) => (
-              <option key={c._id} value={c._id}>
-                {c.name}{c.designation ? ` — ${c.designation}` : ''}{c.isActive ? '' : ' (inactive)'}
+            {keeperChoices.map((r) => (
+              <option key={r._id} value={r._id}>
+                {r.name}{r.designation ? ` — ${r.designation}` : ''}{!r.isActive ? ' (inactive)' : !r.canCollect ? ' (no login yet)' : ''}
               </option>
             ))}
           </select>

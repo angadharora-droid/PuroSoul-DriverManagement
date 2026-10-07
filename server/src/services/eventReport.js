@@ -115,7 +115,7 @@ export function billRow(b) {
     upiRef: b.upiRef,
     hasScreenshot: Boolean(b.screenshot),
     screenshotHash: b.screenshotHash,
-    receiverName: b.receiverName,
+    billerName: b.billerName,
   };
 }
 
@@ -143,8 +143,8 @@ function addToBucket(bucket, b) {
  */
 export async function buildEventReport(eventId) {
   const event = await Event.findById(eventId)
-    .populate('billers', 'name designation mobile isActive passwordHash')
-    .populate('stockKeeper', 'name designation mobile isActive');
+    .populate('billers', 'name designation mobile isActive')
+    .populate('stockKeeper', 'name designation mobile isActive passwordHash');
   if (!event) return null;
 
   const [items, verified, others, statusAgg, entries] = await Promise.all([
@@ -159,14 +159,14 @@ export async function buildEventReport(eventId) {
   ]);
 
   const totals = emptyBucket();
-  const byReceiver = new Map();
+  const byBiller = new Map();
   const byDay = new Map();
   for (const b of verified) {
     addToBucket(totals, b);
 
-    const rKey = String(b.receiver);
-    if (!byReceiver.has(rKey)) byReceiver.set(rKey, emptyBucket({ name: b.receiverName }));
-    addToBucket(byReceiver.get(rKey), b);
+    const key = String(b.biller);
+    if (!byBiller.has(key)) byBiller.set(key, emptyBucket({ name: b.billerName }));
+    addToBucket(byBiller.get(key), b);
 
     const day = istDay(b.verifiedAt);
     if (!byDay.has(day)) byDay.set(day, emptyBucket({ date: day, label: formatDate(dayRange(day).start), screenshots: 0 }));
@@ -190,15 +190,15 @@ export async function buildEventReport(eventId) {
       status: event.status,
       notes: event.notes,
       items: event.items.map((i) => ({ id: i._id, name: i.name, price: i.price, isActive: i.isActive })),
-      billers: event.billers.map((r) => ({
-        id: r._id,
-        name: r.name,
-        designation: r.designation,
-        isActive: r.isActive,
-        canLogIn: Boolean(r.passwordHash),
-      })),
+      billers: event.billers.map((c) => ({ id: c._id, name: c.name, designation: c.designation, isActive: c.isActive })),
+      // A receiver can only log in (and so keep stock) once an admin has given them a password.
       stockKeeper: event.stockKeeper
-        ? { id: event.stockKeeper._id, name: event.stockKeeper.name, isActive: event.stockKeeper.isActive }
+        ? {
+            id: event.stockKeeper._id,
+            name: event.stockKeeper.name,
+            isActive: event.stockKeeper.isActive,
+            canLogIn: Boolean(event.stockKeeper.passwordHash),
+          }
         : null,
       createdAt: event.createdAt,
     },
@@ -206,7 +206,7 @@ export async function buildEventReport(eventId) {
     totals,
     stock,
     items,
-    receivers: [...byReceiver.values()].sort((a, b) => b.amount - a.amount),
+    byBiller: [...byBiller.values()].sort((a, b) => b.amount - a.amount),
     days: [...byDay.values()].sort((a, b) => a.date.localeCompare(b.date)),
     bills: verified.map(billRow),
     otherBills: others.map(billRow),
