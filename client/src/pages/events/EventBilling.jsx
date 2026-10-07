@@ -2,12 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { api, apiBlob, saveBlob } from '../../api/client';
 import { useAuth } from '../../context/AuthContext';
-import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge, PageHeader, Spinner, Modal } from '../../components/ui';
+import { Button, Field, Alert, OtpInput, inputClass, EmptyState, CardSkeleton, StatusBadge, PageHeader, Modal } from '../../components/ui';
 import Icon from '../../components/icons';
 import ScreenshotViewer from '../../components/ScreenshotViewer';
+import PaymentCamera from '../../components/PaymentCamera';
 import { useToast } from '../../components/toast';
 import { formatINR, formatDateTime, OTP_LENGTH } from '../../utils/format';
-import { prepareScreenshot, dataUrlToBase64, formatBytes } from '../../utils/image';
+import { dataUrlToBase64, formatBytes } from '../../utils/image';
 
 function useCountdown(target) {
   const [now, setNow] = useState(Date.now());
@@ -60,7 +61,7 @@ function cleanMobile(value) {
   return d.slice(0, 10);
 }
 
-// The unsent bill — screenshot included — is kept on this device until the
+// The unsent bill — payment photo included — is kept on this device until the
 // server has it, so a reload, a phone call or Android killing the tab never
 // loses it. Keyed per user + event, since stall phones are often shared.
 const draftKeyFor = (userId, eventId) => `purosoul_event_draft:${userId}:${eventId}`;
@@ -73,7 +74,7 @@ function readDraft(key) {
   }
 }
 
-/** 'full' when saved with the screenshot, 'partial' when storage only had room for the text. */
+/** 'full' when saved with the photo, 'partial' when storage only had room for the text. */
 function writeDraft(key, form) {
   try {
     localStorage.setItem(key, JSON.stringify(form));
@@ -155,7 +156,7 @@ export default function EventBilling() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [restored, setRestored] = useState(false);
   const [draftPartial, setDraftPartial] = useState(false);
-  const [shotBusy, setShotBusy] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
 
   const [bill, setBill] = useState(null);
   const [otpSentTo, setOtpSentTo] = useState('');
@@ -170,7 +171,6 @@ export default function EventBilling() {
   const [recent, setRecent] = useState(null);
   const [viewShot, setViewShot] = useState(null);
 
-  const fileRef = useRef(null);
   const confirmTimer = useRef(null);
   const draftLoadedFor = useRef('');
   const billFromForm = useRef(false);
@@ -244,19 +244,10 @@ export default function EventBilling() {
   const totalAmount = Math.round(lines.reduce((s, l) => s + l.q * l.price, 0) * 100) / 100;
   const overStock = lines.find((l) => l.q > Math.max(0, l.available));
 
-  async function onPickScreenshot(e) {
-    const file = e.target.files?.[0];
-    e.target.value = ''; // picking the same file again should still fire
-    if (!file) return;
+  function onPhoto(photo) {
+    setField('screenshot', photo);
     setError('');
-    setShotBusy(true);
-    try {
-      setField('screenshot', await prepareScreenshot(file));
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setShotBusy(false);
-    }
+    setCameraOpen(false);
   }
 
   function enterOtpStep(b, sentTo) {
@@ -279,7 +270,7 @@ export default function EventBilling() {
     if (!lines.length) return setError('Enter the quantity for at least one item');
     if (overStock) return setError(`Only ${Math.max(0, overStock.available)} × ${overStock.name} left in stock`);
     if (!form.paymentMode) return setError('Choose how the customer paid — cash or UPI');
-    if (form.paymentMode === 'upi' && !form.screenshot) return setError('Attach the UPI payment screenshot');
+    if (form.paymentMode === 'upi' && !form.screenshot) return setError('Take a photo of the UPI payment');
     // A UPI bill is final the moment it's saved (no OTP to back out of), so confirm it first.
     if (form.paymentMode === 'upi') return setConfirmUpi(true);
     saveBill();
@@ -296,7 +287,7 @@ export default function EventBilling() {
         upiRef: form.paymentMode === 'upi' ? form.upiRef : '',
         screenshot: form.paymentMode === 'upi' ? dataUrlToBase64(form.screenshot.dataUrl) : undefined,
       });
-      // The bill (and any screenshot) is on the server now — the local draft has done its job.
+      // The bill (and any payment photo) is on the server now — the local draft has done its job.
       dropDraft(draftKey);
       billFromForm.current = true;
       if (data.verified) {
@@ -513,7 +504,7 @@ export default function EventBilling() {
             <h2 className="text-lg font-bold text-slate-900">Bill {bill.billLabel} confirmed</h2>
             <p className="mx-auto mt-1 max-w-xs text-sm leading-relaxed text-slate-500">
               {bill.paymentMode === 'upi'
-                ? 'Saved with the UPI payment screenshot. Share the bill with the customer below.'
+                ? 'Saved with the UPI payment photo. Share the bill with the customer below.'
                 : `${bill.customerName} confirmed the purchase by OTP. Share the bill with them below.`}
             </p>
           </div>
@@ -552,7 +543,7 @@ export default function EventBilling() {
               {bill.hasScreenshot && (
                 <span className="inline-flex items-center gap-1 font-semibold text-brand-700">
                   <Icon name="check-circle" className="h-3.5 w-3.5" />
-                  Screenshot saved
+                  Photo saved
                 </span>
               )}
             </p>
@@ -692,7 +683,7 @@ export default function EventBilling() {
 
           {restored && (
             <div className="mt-4">
-              <Alert kind="info">We kept the bill you hadn't sent yet{form.screenshot ? ', screenshot included' : ''}.</Alert>
+              <Alert kind="info">We kept the bill you hadn't sent yet{form.screenshot ? ', payment photo included' : ''}.</Alert>
             </div>
           )}
 
@@ -772,7 +763,7 @@ export default function EventBilling() {
               <p className="mb-2 text-sm font-medium text-slate-700">Paid by<span className="ml-0.5 text-red-500" aria-hidden="true">*</span></p>
               <div className="grid grid-cols-2 gap-2">
                 <PayOption active={form.paymentMode === 'cash'} icon="banknotes" title="Cash" subtitle="OTP to customer" onClick={() => setField('paymentMode', 'cash')} />
-                <PayOption active={form.paymentMode === 'upi'} icon="phone" title="UPI" subtitle="Screenshot, no OTP" onClick={() => setField('paymentMode', 'upi')} />
+                <PayOption active={form.paymentMode === 'upi'} icon="phone" title="UPI" subtitle="Photo, no OTP" onClick={() => setField('paymentMode', 'upi')} />
               </div>
             </div>
 
@@ -792,16 +783,15 @@ export default function EventBilling() {
 
                 <div>
                   <p className="mb-1.5 text-sm font-medium text-slate-700">
-                    Payment screenshot<span className="ml-0.5 text-red-500" aria-hidden="true">*</span>
+                    Payment photo<span className="ml-0.5 text-red-500" aria-hidden="true">*</span>
                   </p>
-                  <input ref={fileRef} type="file" accept="image/*" className="sr-only" onChange={onPickScreenshot} tabIndex={-1} />
                   {form.screenshot ? (
                     <div className="flex items-center gap-3 rounded-xl border border-brand-200 bg-white p-2.5">
-                      <img src={form.screenshot.dataUrl} alt="Attached UPI payment screenshot" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+                      <img src={form.screenshot.dataUrl} alt="UPI payment photo" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-1 text-sm font-semibold text-brand-800">
                           <Icon name="check-circle" className="h-4 w-4" />
-                          Screenshot attached
+                          Photo taken
                         </p>
                         <p className="text-xs text-slate-500">
                           {formatBytes(form.screenshot.size)} •{' '}
@@ -809,8 +799,8 @@ export default function EventBilling() {
                         </p>
                       </div>
                       <div className="flex shrink-0 flex-col gap-1">
-                        <button type="button" onClick={() => fileRef.current?.click()} className="min-h-8 cursor-pointer rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50">
-                          Change
+                        <button type="button" onClick={() => setCameraOpen(true)} className="min-h-8 cursor-pointer rounded-lg px-2 text-xs font-semibold text-brand-700 hover:bg-brand-50">
+                          Retake
                         </button>
                         <button type="button" onClick={() => setField('screenshot', null)} className="min-h-8 cursor-pointer rounded-lg px-2 text-xs font-semibold text-slate-500 hover:bg-slate-100">
                           Remove
@@ -820,13 +810,12 @@ export default function EventBilling() {
                   ) : (
                     <button
                       type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={shotBusy}
-                      className="flex min-h-24 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-slate-300 bg-white px-4 py-4 text-sm font-semibold text-slate-600 transition-colors hover:border-brand-400 hover:text-brand-800 disabled:cursor-wait"
+                      onClick={() => setCameraOpen(true)}
+                      className="flex min-h-24 w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-brand-300 bg-white px-4 py-4 text-sm font-semibold text-brand-800 transition-colors hover:border-brand-500 hover:bg-brand-50/40"
                     >
-                      {shotBusy ? <Spinner className="h-6 w-6 text-brand-700" /> : <Icon name="photo" className="h-7 w-7 text-slate-400" />}
-                      {shotBusy ? 'Preparing screenshot…' : 'Attach payment screenshot'}
-                      <span className="text-xs font-normal text-slate-400">From the gallery — the customer's or your UPI app's success screen</span>
+                      <Icon name="camera" className="h-7 w-7 text-brand-600" />
+                      Take payment photo
+                      <span className="text-xs font-normal text-slate-500">Point the camera at the UPI success screen — amount and UTR in view</span>
                     </button>
                   )}
                 </div>
@@ -841,7 +830,7 @@ export default function EventBilling() {
               icon={busy ? undefined : form.paymentMode === 'upi' ? 'check' : 'send'}
               className="w-full py-3"
               loading={busy}
-              disabled={shotBusy || totalQty === 0 || !form.paymentMode}
+              disabled={totalQty === 0 || !form.paymentMode}
             >
               {form.paymentMode === 'upi'
                 ? busy
@@ -857,7 +846,7 @@ export default function EventBilling() {
             <p className="flex items-start gap-1.5 text-xs leading-relaxed text-slate-400">
               <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {form.paymentMode === 'upi'
-                ? 'No OTP for UPI — the payment screenshot is the proof. The bill is final once saved.'
+                ? 'No OTP for UPI — the payment photo is the proof. The bill is final once saved.'
                 : "Cash bills: the OTP goes to the customer's phone. Ask them for the code once they've paid."}
             </p>
           </form>
@@ -884,10 +873,10 @@ export default function EventBilling() {
           </div>
           <div className="flex items-center gap-3">
             {form.screenshot && (
-              <img src={form.screenshot.dataUrl} alt="UPI payment screenshot" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              <img src={form.screenshot.dataUrl} alt="UPI payment photo" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
             )}
             <p className="text-xs leading-relaxed text-slate-600">
-              Check the screenshot shows <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> received
+              Check the photo shows <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> received
               {form.upiRef ? <> (UTR <span className="tnum font-mono">{form.upiRef}</span>)</> : ''}. No OTP is sent for UPI — once saved, the bill can't be changed.
             </p>
           </div>
@@ -945,7 +934,7 @@ export default function EventBilling() {
                       {b.hasScreenshot && (
                         <button onClick={() => setViewShot(b)} className="flex min-h-9 cursor-pointer items-center gap-1 rounded-lg px-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">
                           <Icon name="photo" className="h-3.5 w-3.5" />
-                          Screenshot
+                          Photo
                         </button>
                       )}
                     </div>
@@ -958,6 +947,7 @@ export default function EventBilling() {
       )}
 
       <ScreenshotViewer bill={viewShot} onClose={() => setViewShot(null)} />
+      {cameraOpen && <PaymentCamera onCapture={onPhoto} onClose={() => setCameraOpen(false)} />}
     </div>
   );
 }

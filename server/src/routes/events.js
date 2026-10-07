@@ -84,12 +84,12 @@ function sniffImage(buf) {
 
 function decodeScreenshot(raw) {
   const b64 = typeof raw === 'string' ? raw : raw?.data;
-  if (!b64 || typeof b64 !== 'string') throw httpError(400, 'Attach the UPI payment screenshot');
+  if (!b64 || typeof b64 !== 'string') throw httpError(400, 'Take a photo of the UPI payment');
   const data = Buffer.from(b64.replace(/^data:[^,]*,/, ''), 'base64');
-  if (data.length < 1024) throw httpError(400, 'The screenshot looks empty — please attach it again');
-  if (data.length > SCREENSHOT_MAX_BYTES) throw httpError(413, 'The screenshot is too large (max 5 MB)');
+  if (data.length < 1024) throw httpError(400, 'The payment photo looks empty — please take it again');
+  if (data.length > SCREENSHOT_MAX_BYTES) throw httpError(413, 'The payment photo is too large (max 5 MB)');
   const contentType = sniffImage(data);
-  if (!contentType) throw httpError(400, 'The screenshot must be a JPEG, PNG or WebP image');
+  if (!contentType) throw httpError(400, 'The payment photo must be a JPEG, PNG or WebP image');
   return { data, contentType, size: data.length, sha256: crypto.createHash('sha256').update(data).digest('hex') };
 }
 
@@ -440,9 +440,9 @@ router.post('/bills/:billId/cancel', requireAuth('collector', 'admin'), async (r
 /** The stored UPI screenshot, served from the database. */
 router.get('/bills/:billId/screenshot', requireAuth('admin', 'collector', 'receiver'), async (req, res) => {
   const bill = await loadViewableBill(req);
-  if (!bill.screenshot) return res.status(404).json({ error: 'This bill has no screenshot' });
+  if (!bill.screenshot) return res.status(404).json({ error: 'This bill has no payment photo' });
   const shot = await EventAttachment.findById(bill.screenshot).select('+data');
-  if (!shot) return res.status(404).json({ error: 'Screenshot not found' });
+  if (!shot) return res.status(404).json({ error: 'Payment photo not found' });
   const ext = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[shot.contentType];
   res.setHeader('Content-Type', shot.contentType);
   res.setHeader('Content-Disposition', `inline; filename="upi-${billLabelOf(bill)}.${ext}"`);
@@ -538,7 +538,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo');
     if (reused) {
       return res.status(409).json({
-        error: `This screenshot is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own screenshot.`,
+        error: `This photo is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own photo.`,
       });
     }
     if (upiRef) {
@@ -769,7 +769,7 @@ router.get('/:id/report', requireAuth('admin', 'receiver'), async (req, res) => 
         'Amount (INR)',
         'Payment',
         'UPI Ref',
-        'Screenshot',
+        'Payment Photo',
         'Billed By',
         'Ref',
       ],
@@ -816,10 +816,10 @@ router.get('/:id/screenshots.pdf', requireAuth('admin', 'receiver'), async (req,
   const first = (part - 1) * SCREENSHOTS_PER_PDF + 1;
   const pdf = await eventScreenshotsPdf({
     event,
-    subtitle: `${date ? formatDate(dayRange(date).start) : 'Whole event'} • ${total} screenshot${total === 1 ? '' : 's'}${
+    subtitle: `${date ? formatDate(dayRange(date).start) : 'Whole event'} • ${total} photo${total === 1 ? '' : 's'}${
       parts > 1 ? ` • part ${part} of ${parts}` : ''
     }`,
-    note: parts > 1 ? `This file holds screenshots ${first}–${Math.min(first + bills.length - 1, total)} of ${total}.` : null,
+    note: parts > 1 ? `This file holds photos ${first}–${Math.min(first + bills.length - 1, total)} of ${total}.` : null,
     bills: bills.map(billRow),
     loadBatch,
   });

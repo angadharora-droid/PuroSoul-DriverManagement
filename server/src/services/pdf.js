@@ -304,7 +304,7 @@ export function eventBillPdf(bill, event) {
   doc.font('Helvetica').fontSize(7).fillColor(MUTED);
   doc.text(
     bill.paymentMode === 'upi'
-      ? 'Paid by UPI — the payment screenshot is on file with this bill.'
+      ? 'Paid by UPI — the payment photo is on file with this bill.'
       : `Confirmed by the customer with the OTP sent to +91 ••••••${String(bill.customerMobile).slice(-4)}.`,
     MINI_M,
     y,
@@ -449,7 +449,7 @@ export function eventReportPdf(report) {
     { label: 'Amount', x: 470, w: 75, align: 'right' },
   ];
   const muted = Object.fromEntries(billCols.map((_, i) => [i, MUTED]));
-  y = evSection(doc, y, `Bills (${report.bills.length})`, 'Confirmed bills only — cash bills by an OTP sent to the customer, UPI bills by the stored payment screenshot.');
+  y = evSection(doc, y, `Bills (${report.bills.length})`, 'Confirmed bills only — cash bills by an OTP sent to the customer, UPI bills by the stored payment photo.');
   y = evTableHeader(doc, y, billCols);
   for (const b of report.bills) {
     y = evSpace(doc, y, 36, billCols);
@@ -458,7 +458,7 @@ export function eventReportPdf(report) {
       doc,
       y + 11,
       billCols,
-      ['', '', `+91 ${b.customerMobile}`, `by ${b.billerName}`, b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'screenshot' : '') : '', ''],
+      ['', '', `+91 ${b.customerMobile}`, `by ${b.billerName}`, b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'photo' : '') : '', ''],
       { size: 7, colors: muted }
     );
     y += 26;
@@ -523,14 +523,14 @@ export function eventReportPdf(report) {
  */
 export async function eventScreenshotsPdf({ event, subtitle, bills, loadBatch, note }) {
   const doc = new PDFDocument({ size: 'A4', margin: 50, bufferPages: true });
-  header(doc, `UPI Payment Screenshots — ${event.name}`, subtitle);
+  header(doc, `UPI Payment Photos — ${event.name}`, subtitle);
   let y = doc.y + 4;
   if (note) {
     doc.font('Helvetica').fontSize(8.5).fillColor(MUTED).text(note, 50, y, { width: 495 });
     y = doc.y + 8;
   }
   if (!bills.length) {
-    doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('No UPI screenshots in this period.', 50, y);
+    doc.font('Helvetica').fontSize(10).fillColor(MUTED).text('No UPI payment photos in this period.', 50, y);
   }
 
   const COL_W = 240;
@@ -572,7 +572,7 @@ export async function eventScreenshotsPdf({ event, subtitle, bills, loadBatch, n
       if (!drawn) {
         doc.font('Helvetica').fontSize(9).fillColor(MUTED);
         doc.text(
-          img ? 'Screenshot is stored, but in a format the PDF cannot embed — view it in the app.' : 'Screenshot not found.',
+          img ? 'Photo is stored, but in a format the PDF cannot embed — view it in the app.' : 'Photo not found.',
           x + 12,
           top + BOX_H / 2 - 12,
           { width: COL_W - 24, align: 'center' }
