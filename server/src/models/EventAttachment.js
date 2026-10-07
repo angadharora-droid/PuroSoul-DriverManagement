@@ -19,7 +19,7 @@ const attachmentSchema = new mongoose.Schema(
     sha256: { type: String, required: true, index: true },
     // select: false keeps the image bytes out of every query unless asked for with '+data'.
     data: { type: Buffer, required: true, select: false },
-    uploadedBy: { type: mongoose.Schema.Types.ObjectId, required: true }, // the receiver or admin who raised the bill
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, required: true }, // the collector or admin who raised the bill
   },
   { timestamps: true }
 );

@@ -4,7 +4,7 @@ export const EVENT_BILL_STATUSES = ['pending_otp', 'verified', 'expired', 'faile
 export const PAYMENT_MODES = ['cash', 'upi'];
 
 /**
- * A mini bill raised by a receiver at an event stall: who bought, how many of
+ * A mini bill raised by a collector at an event stall: who bought, how many of
  * each item (priced by the admin), and how they paid. Confirmed by an OTP sent
  * to the CUSTOMER's mobile, exactly like a party collection. Once verified it
  * is immutable except for notification bookkeeping.
@@ -30,10 +30,10 @@ const lineSchema = new mongoose.Schema(
 const billSchema = new mongoose.Schema(
   {
     event: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true, index: true },
-    // Whoever raised the bill — an assigned receiver, or an admin stepping in.
-    receiver: { type: mongoose.Schema.Types.ObjectId, refPath: 'receiverModel', required: true, index: true },
-    receiverModel: { type: String, enum: ['Receiver', 'Admin'], default: 'Receiver' },
-    receiverName: { type: String, required: true, trim: true }, // snapshot; admins carry an "(Admin)" suffix
+    // Whoever raised the bill — an assigned collector, or an admin stepping in.
+    biller: { type: mongoose.Schema.Types.ObjectId, refPath: 'billerModel', required: true, index: true },
+    billerModel: { type: String, enum: ['Collector', 'Admin'], default: 'Collector' },
+    billerName: { type: String, required: true, trim: true }, // snapshot; admins carry an "(Admin)" suffix
     // Assigned on verification, so verified bills are numbered in sequence per event.
     billNo: { type: Number, default: null },
 
@@ -59,7 +59,7 @@ const billSchema = new mongoose.Schema(
     totalAmount: { type: Number, required: true, min: [0.01, 'Bill total must be greater than zero'] },
 
     paymentMode: { type: String, enum: PAYMENT_MODES, required: [true, 'Payment mode is required'] },
-    // UPI transaction reference / UTR as typed by the receiver (optional).
+    // UPI transaction reference / UTR as typed by the biller (optional).
     upiRef: { type: String, trim: true, uppercase: true, default: '', maxlength: 40 },
     // The stored payment screenshot (UPI bills). Hash kept here too so a reused
     // screenshot is caught without loading any image bytes.
@@ -105,7 +105,7 @@ billSchema.virtual('billLabel').get(function () {
 
 billSchema.index({ event: 1, createdAt: -1 });
 billSchema.index({ event: 1, status: 1, verifiedAt: 1 });
-billSchema.index({ receiver: 1, createdAt: -1 });
+billSchema.index({ biller: 1, createdAt: -1 });
 billSchema.index({ screenshotHash: 1 });
 billSchema.index({ upiRef: 1 });
 

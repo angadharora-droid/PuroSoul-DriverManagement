@@ -3,10 +3,10 @@ import mongoose from 'mongoose';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
- * An event is a sales stall (exhibition, fair, promotion) where receivers sell
+ * An event is a sales stall (exhibition, fair, promotion) where collectors sell
  * stock straight to walk-in customers. The admin fixes everything that decides
- * money — the items and their prices, which receivers may bill, and which
- * collector keeps the stock ledger — so the people at the stall only ever
+ * money — the items and their prices, which collectors may bill, and which
+ * receiver keeps the stock ledger — so the people at the stall only ever
  * enter quantities, never a price.
  */
 const itemSchema = new mongoose.Schema({
@@ -42,10 +42,11 @@ const eventSchema = new mongoose.Schema(
       type: [itemSchema],
       validate: [(v) => v.length > 0, 'Add at least one item with its price'],
     },
-    // Receivers allowed to raise bills at this event (they need a login — see Receiver.canCollect).
-    billers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Receiver' }],
-    // The one collector who records stock coming in and going out.
-    stockKeeper: { type: mongoose.Schema.Types.ObjectId, ref: 'Collector', default: null },
+    // Collectors allowed to raise bills at this event.
+    billers: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Collector' }],
+    // The one receiver who records stock coming in and going out (needs a
+    // login — see Receiver.canCollect).
+    stockKeeper: { type: mongoose.Schema.Types.ObjectId, ref: 'Receiver', default: null },
     // Closed events take no new bills or stock entries; bills already awaiting
     // OTP can still be verified, since the customer has usually paid by then.
     status: { type: String, enum: ['open', 'closed'], default: 'open', index: true },

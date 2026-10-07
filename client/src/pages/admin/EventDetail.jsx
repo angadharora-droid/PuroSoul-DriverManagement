@@ -112,7 +112,7 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
                 {b.upiRef && <p className="tnum font-mono text-xs text-slate-500">{b.upiRef}</p>}
               </td>
               <td className={`${tdR} font-semibold text-slate-900`}>{formatINR(b.totalAmount)}</td>
-              <td className={`${td} text-slate-600`}>{b.receiverName}</td>
+              <td className={`${td} text-slate-600`}>{b.billerName}</td>
               <td className="whitespace-nowrap px-3 py-1.5 text-right">
                 {b.hasScreenshot && (
                   <button
@@ -193,7 +193,7 @@ export default function EventDetail() {
           b.customerMobile.includes(q) ||
           (b.billLabel || '').includes(q) ||
           (b.upiRef || '').toLowerCase().includes(q) ||
-          b.receiverName.toLowerCase().includes(q))
+          (b.billerName || '').toLowerCase().includes(q))
     );
   }, [report, search, mode]);
 
@@ -213,7 +213,8 @@ export default function EventDetail() {
   const shotCount = report.days.reduce((s, d) => s + d.screenshots, 0);
   const shotParts = Math.ceil(shotCount / SCREENSHOTS_PER_PDF);
   const otherStatuses = Object.entries(report.statusCounts || {}).filter(([s]) => s !== 'verified');
-  const billersWithoutLogin = event.billers.filter((b) => !b.canLogIn || !b.isActive);
+  const inactiveBillers = event.billers.filter((b) => !b.isActive);
+  const keeperLocked = Boolean(event.stockKeeper && (!event.stockKeeper.canLogIn || !event.stockKeeper.isActive));
   const overSold = report.items.filter((i) => i.remaining < 0);
 
   // Admin clean-up: an abandoned bill holds stock (while its OTP is live) and its screenshot until cancelled.
@@ -273,22 +274,26 @@ export default function EventDetail() {
             </p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Billing receivers</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Billing collectors</p>
             <p className="mt-1 text-slate-800">{event.billers.map((b) => b.name).join(', ') || '—'}</p>
           </div>
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Stock keeper</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Stock keeper (receiver)</p>
             <p className="mt-1 text-slate-800">{event.stockKeeper?.name || '—'}</p>
           </div>
         </div>
-        {(event.status === 'open' && (!event.billers.length || !event.stockKeeper || billersWithoutLogin.length > 0)) || overSold.length > 0 ? (
+        {(event.status === 'open' && (!event.billers.length || !event.stockKeeper || inactiveBillers.length > 0 || keeperLocked)) ||
+        overSold.length > 0 ? (
           <div className="mt-3 space-y-1.5 border-t border-slate-100 pt-3">
-            {event.status === 'open' && !event.billers.length && <Warn>No receivers can bill yet — edit the event to add them.</Warn>}
-            {event.status === 'open' && !event.stockKeeper && <Warn>No stock keeper — nothing can be billed until stock is recorded (assign a collector, or use Add stock).</Warn>}
-            {event.status === 'open' && billersWithoutLogin.length > 0 && (
+            {event.status === 'open' && !event.billers.length && <Warn>No collectors can bill yet — edit the event to add them.</Warn>}
+            {event.status === 'open' && !event.stockKeeper && <Warn>No stock keeper — nothing can be billed until stock is recorded (assign a receiver, or use Add stock).</Warn>}
+            {event.status === 'open' && inactiveBillers.length > 0 && (
+              <Warn>{inactiveBillers.map((b) => b.name).join(', ')} is deactivated and can't log in — reactivate on the Collectors page.</Warn>
+            )}
+            {event.status === 'open' && keeperLocked && (
               <Warn>
-                {billersWithoutLogin.map((b) => b.name).join(', ')} can't log in yet — set a password on the Receivers page{' '}
-                {billersWithoutLogin.some((b) => !b.isActive) ? '(or reactivate them)' : ''}.
+                {event.stockKeeper.name} can't log in to record stock yet —{' '}
+                {event.stockKeeper.isActive ? 'set a password on the Receivers page' : 'reactivate them on the Receivers page'}.
               </Warn>
             )}
             {overSold.length > 0 && <Warn>More billed than recorded in stock: {overSold.map((i) => `${i.name} (${i.remaining})`).join(', ')}.</Warn>}
@@ -360,8 +365,8 @@ export default function EventDetail() {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card title="Receiver-wise" subtitle="Cash column = the cash each receiver should be holding from this event.">
-          <SplitTable rows={report.receivers} firstLabel="Receiver" labelOf={(r) => r.name} totals={totals} />
+        <Card title="Collector-wise" subtitle="Cash column = the cash each collector should be holding from this event.">
+          <SplitTable rows={report.byBiller} firstLabel="Billed by" labelOf={(r) => r.name} totals={totals} />
         </Card>
         <Card
           title="Day-wise"

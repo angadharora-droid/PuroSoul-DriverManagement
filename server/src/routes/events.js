@@ -44,7 +44,7 @@ function normalizeMobile(value) {
 }
 
 // Abuse guard: a busy stall bills far faster than field collections, so the
-// per-receiver ceiling is well above the collection limiter's 10.
+// per-biller ceiling is well above the collection limiter's 10.
 const billOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
@@ -115,7 +115,7 @@ function billView(b, event) {
     resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     verifiedAt: b.verifiedAt,
     createdAt: b.createdAt,
-    receiverName: b.receiverName,
+    billerName: b.billerName,
     event: event ? { id: event._id, name: event.name, venue: event.venue } : { id: b.event },
   };
 }
@@ -130,21 +130,23 @@ function adminEventView(e, summary) {
     status: e.status,
     notes: e.notes,
     items: e.items.map((i) => ({ id: i._id, name: i.name, price: i.price, isActive: i.isActive })),
-    billers: e.billers.map((r) => ({
-      id: r._id,
-      name: r.name,
-      designation: r.designation,
-      isActive: r.isActive,
-      canLogIn: Boolean(r.passwordHash),
-    })),
-    stockKeeper: e.stockKeeper ? { id: e.stockKeeper._id, name: e.stockKeeper.name, isActive: e.stockKeeper.isActive } : null,
+    billers: e.billers.map((c) => ({ id: c._id, name: c.name, designation: c.designation, isActive: c.isActive })),
+    // A receiver can only log in (and so keep stock) once an admin has given them a password.
+    stockKeeper: e.stockKeeper
+      ? {
+          id: e.stockKeeper._id,
+          name: e.stockKeeper.name,
+          isActive: e.stockKeeper.isActive,
+          canLogIn: Boolean(e.stockKeeper.passwordHash),
+        }
+      : null,
     summary: summary || { amount: 0, bills: 0, quantity: 0, cash: 0, upi: 0 },
     createdAt: e.createdAt,
   };
 }
 
 function populateForAdmin(query) {
-  return query.populate('billers', 'name designation isActive passwordHash').populate('stockKeeper', 'name isActive');
+  return query.populate('billers', 'name designation isActive').populate('stockKeeper', 'name isActive passwordHash');
 }
 
 /** Event as the stall staff see it: prices and live stock, nothing about other people. */
@@ -229,9 +231,9 @@ async function applyEventFields(event, body) {
 
   if (b.billerIds !== undefined) {
     const ids = [...new Set((Array.isArray(b.billerIds) ? b.billerIds : []).map(String))];
-    if (!ids.every(isId)) throw httpError(400, 'Invalid receiver selected');
-    if ((await Receiver.countDocuments({ _id: { $in: ids } })) !== ids.length) {
-      throw httpError(400, 'One or more selected receivers no longer exist');
+    if (!ids.every(isId)) throw httpError(400, 'Invalid collector selected');
+    if ((await Collector.countDocuments({ _id: { $in: ids } })) !== ids.length) {
+      throw httpError(400, 'One or more selected collectors no longer exist');
     }
     event.billers = ids;
   }
@@ -241,7 +243,7 @@ async function applyEventFields(event, body) {
       event.stockKeeper = null;
     } else {
       if (!isId(b.stockKeeperId)) throw httpError(400, 'Invalid stock keeper selected');
-      const keeper = await Collector.findById(b.stockKeeperId).select('_id');
+      const keeper = await Receiver.findById(b.stockKeeperId).select('_id');
       if (!keeper) throw httpError(400, 'The selected stock keeper no longer exists');
       event.stockKeeper = keeper._id;
     }
@@ -251,26 +253,26 @@ async function applyEventFields(event, body) {
 // ----------------------------------------------------------- field staff ---
 
 /**
- * Open events the signed-in person works at: receivers bill, the stock keeper
- * keeps stock, and an admin can do both at every open event.
+ * Open events the signed-in person works at: collectors bill, the stock-keeping
+ * receiver keeps stock, and an admin can do both at every open event.
  */
 router.get('/mine', requireAuth('collector', 'receiver', 'admin'), async (req, res) => {
   const { role, id } = req.user;
-  const scope = role === 'admin' ? {} : role === 'receiver' ? { billers: id } : { stockKeeper: id };
+  const scope = role === 'admin' ? {} : role === 'collector' ? { billers: id } : { stockKeeper: id };
   const events = await Event.find({ ...scope, status: 'open' }).sort({ createdAt: -1 });
   const out = [];
   for (const e of events) out.push(fieldEventView(e, await stockPositions(e)));
-  res.json({ role: role === 'admin' ? 'admin' : role === 'receiver' ? 'billing' : 'stock', events: out });
+  res.json({ role: role === 'admin' ? 'admin' : role === 'collector' ? 'billing' : 'stock', events: out });
 });
 
 /** Admins stepping in are named as such on every bill and ledger line they make. */
 const actorName = (user) => (user.role === 'admin' ? `${user.name} (Admin)` : user.name);
 
-/** Bills the signed-in receiver (or admin) raised, newest first (optionally for one event). */
-router.get('/bills/mine', requireAuth('receiver', 'admin'), async (req, res) => {
+/** Bills the signed-in collector (or admin) raised, newest first (optionally for one event). */
+router.get('/bills/mine', requireAuth('collector', 'admin'), async (req, res) => {
   const page = Math.max(1, Number(req.query.page) || 1);
   const limit = Math.min(50, Number(req.query.limit) || 10);
-  const filter = { receiver: req.user.id };
+  const filter = { biller: req.user.id };
   if (req.query.eventId && isId(req.query.eventId)) filter.event = req.query.eventId;
   const [items, total] = await Promise.all([
     EventBill.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
@@ -290,24 +292,24 @@ router.get('/bills/mine', requireAuth('receiver', 'admin'), async (req, res) => 
   });
 });
 
-/** A receiver works on their own bills; an admin on any bill. */
+/** A collector works on their own bills; an admin on any bill. */
 async function loadOwnBill(req) {
-  const filter = req.user.role === 'admin' ? { _id: req.params.billId } : { _id: req.params.billId, receiver: req.user.id };
+  const filter = req.user.role === 'admin' ? { _id: req.params.billId } : { _id: req.params.billId, biller: req.user.id };
   const bill = await EventBill.findOne(filter);
   if (!bill) throw httpError(404, 'Bill not found');
   return bill;
 }
 
-/** Admins see every bill; a receiver only their own. */
+/** Admins see every bill; a collector only their own. */
 async function loadViewableBill(req) {
   const bill = await EventBill.findById(req.params.billId);
   if (!bill) throw httpError(404, 'Bill not found');
-  if (req.user.role !== 'admin' && String(bill.receiver) !== req.user.id) throw httpError(403, 'Not your bill');
+  if (req.user.role !== 'admin' && String(bill.biller) !== req.user.id) throw httpError(403, 'Not your bill');
   return bill;
 }
 
 /** Resend OTP: limited count, with a cooldown between sends. Resets attempts. */
-router.post('/bills/:billId/resend-otp', requireAuth('receiver', 'admin'), billOtpLimiter, async (req, res) => {
+router.post('/bills/:billId/resend-otp', requireAuth('collector', 'admin'), billOtpLimiter, async (req, res) => {
   const bill = await loadOwnBill(req);
   // 'failed' (locked after wrong attempts, or the first SMS never went) is recoverable with a fresh OTP.
   if (!['pending_otp', 'expired', 'failed'].includes(bill.status)) {
@@ -335,7 +337,7 @@ router.post('/bills/:billId/resend-otp', requireAuth('receiver', 'admin'), billO
   try {
     await sendSms(bill.customerMobile, collectionOtpMessage(code, bill.totalAmount));
   } catch (err) {
-    // A failed send must not cost the receiver a resend or restart the cooldown.
+    // A failed send must not cost the biller a resend or restart the cooldown.
     bill.otpResendCount -= 1;
     bill.lastOtpSentAt = prevLastOtpSentAt;
     await bill.save().catch(() => {});
@@ -347,8 +349,8 @@ router.post('/bills/:billId/resend-otp', requireAuth('receiver', 'admin'), billO
   res.json({ bill: billView(bill, event), otpSentTo: maskMobile(bill.customerMobile) });
 });
 
-/** Verify the OTP the receiver got verbally from the customer. Numbers the bill. */
-router.post('/bills/:billId/verify', requireAuth('receiver', 'admin'), async (req, res) => {
+/** Verify the OTP the biller got verbally from the customer. Numbers the bill. */
+router.post('/bills/:billId/verify', requireAuth('collector', 'admin'), async (req, res) => {
   const otp = String((req.body || {}).otp || '').trim();
   const bill = await loadOwnBill(req);
   const event = await Event.findById(bill.event).select('name venue');
@@ -407,7 +409,7 @@ router.post('/bills/:billId/verify', requireAuth('receiver', 'admin'), async (re
 });
 
 /** Abandon an unverified bill. Its screenshot stays on record but can be used again. */
-router.post('/bills/:billId/cancel', requireAuth('receiver', 'admin'), async (req, res) => {
+router.post('/bills/:billId/cancel', requireAuth('collector', 'admin'), async (req, res) => {
   const bill = await loadOwnBill(req);
   if (!['pending_otp', 'expired', 'failed'].includes(bill.status)) {
     return res.status(400).json({ error: `Cannot cancel a ${bill.status} bill` });
@@ -418,7 +420,7 @@ router.post('/bills/:billId/cancel', requireAuth('receiver', 'admin'), async (re
 });
 
 /** The stored UPI screenshot, served from the database. */
-router.get('/bills/:billId/screenshot', requireAuth('admin', 'receiver'), async (req, res) => {
+router.get('/bills/:billId/screenshot', requireAuth('admin', 'collector'), async (req, res) => {
   const bill = await loadViewableBill(req);
   if (!bill.screenshot) return res.status(404).json({ error: 'This bill has no screenshot' });
   const shot = await EventAttachment.findById(bill.screenshot).select('+data');
@@ -432,7 +434,7 @@ router.get('/bills/:billId/screenshot', requireAuth('admin', 'receiver'), async 
 });
 
 /** Customer mini bill PDF (verified bills only). */
-router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'receiver'), async (req, res) => {
+router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'collector'), async (req, res) => {
   const bill = await loadViewableBill(req);
   if (bill.status !== 'verified') {
     return res.status(400).json({ error: 'The bill is only available once the customer has confirmed the OTP' });
@@ -445,12 +447,12 @@ router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'receiver'), async (r
 });
 
 /**
- * Raise a mini bill and send the OTP to the CUSTOMER's mobile. The receiver
+ * Raise a mini bill and send the OTP to the CUSTOMER's mobile. The collector
  * sends quantities only — every price comes from the admin's item list. A UPI
  * bill must carry its payment screenshot, and the bill and screenshot are
  * saved together before any SMS goes out, so neither can exist without the other.
  */
-router.post('/:id/bills', requireAuth('receiver', 'admin'), billOtpLimiter, customerOtpLimiter, async (req, res) => {
+router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, customerOtpLimiter, async (req, res) => {
   const event = await Event.findById(req.params.id);
   if (!event) return res.status(404).json({ error: 'Event not found' });
   const isAdmin = req.user.role === 'admin';
@@ -515,9 +517,9 @@ router.post('/:id/bills', requireAuth('receiver', 'admin'), billOtpLimiter, cust
     shot = decodeScreenshot(body.screenshot);
 
     // One UPI payment can only ever pay for one bill — anywhere, at any event.
-    const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo receiver status');
+    const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo biller status');
     if (reused) {
-      const mine = String(reused.receiver) === req.user.id && reused.status !== 'verified';
+      const mine = String(reused.biller) === req.user.id && reused.status !== 'verified';
       return res.status(409).json({
         error: `This screenshot is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own screenshot.${
           mine ? ' If that bill was a mistake, cancel it under Recent bills first.' : ''
@@ -543,9 +545,9 @@ router.post('/:id/bills', requireAuth('receiver', 'admin'), billOtpLimiter, cust
     bill = await EventBill.create({
       _id: billId,
       event: event._id,
-      receiver: req.user.id,
-      receiverModel: isAdmin ? 'Admin' : 'Receiver',
-      receiverName: actorName(req.user),
+      biller: req.user.id,
+      billerModel: isAdmin ? 'Admin' : 'Collector',
+      billerName: actorName(req.user),
       customerName,
       customerMobile,
       lines,
@@ -576,7 +578,7 @@ router.post('/:id/bills', requireAuth('receiver', 'admin'), billOtpLimiter, cust
     bill.notifyError = `otp-sms: ${err.message}`;
     await bill.save();
     console.error('[event-otp] SMS send failed:', err.message);
-    // The bill (and screenshot) are safely stored — the receiver can resend from the OTP screen.
+    // The bill (and screenshot) are safely stored — the biller can resend from the OTP screen.
     return res.status(502).json({
       error: 'Could not send the OTP SMS to the customer. The bill and screenshot are saved — tap Resend OTP.',
       bill: billView(bill, event),
@@ -600,7 +602,7 @@ async function loadStockEvent(req) {
 }
 
 /** Stock position and the latest ledger entries (stock keeper or admin). */
-router.get('/:id/stock', requireAuth('collector', 'admin'), async (req, res) => {
+router.get('/:id/stock', requireAuth('receiver', 'admin'), async (req, res) => {
   const event = await loadStockEvent(req);
   const [items, entries] = await Promise.all([
     stockPositions(event),
@@ -610,7 +612,7 @@ router.get('/:id/stock', requireAuth('collector', 'admin'), async (req, res) => 
 });
 
 /** Stock keeper (or an admin) records stock arriving at (in) or leaving (out) the event. */
-router.post('/:id/stock', requireAuth('collector', 'admin'), async (req, res) => {
+router.post('/:id/stock', requireAuth('receiver', 'admin'), async (req, res) => {
   const event = await loadStockEvent(req);
   if (event.status !== 'open') return res.status(400).json({ error: 'This event is closed — stock can no longer be changed' });
 
@@ -642,7 +644,7 @@ router.post('/:id/stock', requireAuth('collector', 'admin'), async (req, res) =>
     quantity: qty,
     note: cleanNote,
     enteredBy: req.user.id,
-    enteredByModel: req.user.role === 'admin' ? 'Admin' : 'Collector',
+    enteredByModel: req.user.role === 'admin' ? 'Admin' : 'Receiver',
     enteredByName: actorName(req.user),
   });
   res.status(201).json({ entry: entryView(entry), items: await stockPositions(event) });
@@ -709,7 +711,7 @@ router.get('/:id/report', requireAuth('admin'), async (req, res) => {
         b.paymentMode === 'upi' ? 'UPI' : 'Cash',
         b.upiRef,
         b.hasScreenshot ? 'yes' : '',
-        b.receiverName,
+        b.billerName,
         b.ref,
       ];
     });

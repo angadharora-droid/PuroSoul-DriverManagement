@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 
 /**
  * One line of an event's stock ledger, entered by the event's stock keeper
- * (a collector) or an admin. Append-only: a mistake is corrected with an opposite entry,
+ * (a receiver) or an admin. Append-only: a mistake is corrected with an opposite entry,
  * never by editing, so the ledger always shows what was recorded and when.
  */
 const stockEntrySchema = new mongoose.Schema(
@@ -21,7 +21,7 @@ const stockEntrySchema = new mongoose.Schema(
     note: { type: String, trim: true, default: '', maxlength: 200 },
     // The event's stock keeper, or an admin stepping in.
     enteredBy: { type: mongoose.Schema.Types.ObjectId, refPath: 'enteredByModel', required: true },
-    enteredByModel: { type: String, enum: ['Collector', 'Admin'], default: 'Collector' },
+    enteredByModel: { type: String, enum: ['Receiver', 'Admin'], default: 'Receiver' },
     enteredByName: { type: String, required: true, trim: true }, // snapshot; admins carry an "(Admin)" suffix
   },
   { timestamps: true }
