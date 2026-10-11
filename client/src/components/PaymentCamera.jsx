@@ -1,5 +1,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from './icons';
 import { Spinner } from './ui';
 import { captureFrame, preparePhoto } from '../utils/image';
@@ -245,13 +246,21 @@ export default function PaymentCamera({ onCapture, onClose }) {
 
   const canStream = Boolean(navigator.mediaDevices?.getUserMedia);
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-[60] flex flex-col overflow-hidden bg-black text-white"
+      className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-black text-white"
       style={{
+        position: 'fixed',
+        inset: 0,
+        width: '100%',
         height: '100vh',
-        height: '100dvh',
+        minHeight: '100dvh',
+        maxHeight: '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
+        paddingLeft: 'env(safe-area-inset-left)',
+        paddingRight: 'env(safe-area-inset-right)',
+        boxSizing: 'border-box',
+        overscrollBehavior: 'none',
       }}
       role="dialog"
       aria-modal="true"
@@ -360,9 +369,7 @@ export default function PaymentCamera({ onCapture, onClose }) {
       </div>
 
       {/* Bottom controls */}
-      <div
-        className="shrink-0 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      >
+      <div className="shrink-0 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {phase === 'review' ? (
           <>
             <p className="mb-3 text-center text-xs text-white/70">
@@ -428,6 +435,7 @@ export default function PaymentCamera({ onCapture, onClose }) {
         tabIndex={-1}
         onChange={onPhoneCameraPhoto}
       />
-    </div>
+    </div>,
+    document.body
   );
 }
