@@ -1,66 +1,37 @@
-
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import Icon from './icons';
-import { Spinner } from './ui';
-import { captureFrame, preparePhoto } from '../utils/image';
-
-function cameraErrorMessage(err) {
-  switch (err?.name) {
-    case 'NotAllowedError':
-    case 'SecurityError':
-      return 'Camera access is blocked for this site. Allow it from the lock icon in the address bar, or use the phone camera.';
-    case 'NotFoundError':
-    case 'OverconstrainedError':
-      return 'No camera was found on this device.';
-    case 'NotReadableError':
-    case 'AbortError':
-      return 'The camera is busy in another app. Close that app and try again.';
-    default:
-      return 'The camera could not start.';
-  }
-}
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export default function PaymentCamera({ onCapture, onClose }) {
   const videoRef = useRef(null);
   const streamRef = useRef(null);
-  const fileRef = useRef(null);
-  const run = useRef(0);
-  const source = useRef('live');
-  const phaseRef = useRef('starting');
-
-  const [phase, setPhaseState] = useState('starting');
-  const [photo, setPhoto] = useState(null);
+  const fileInputRef = useRef(null);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [photo, setPhoto] = useState(null);
+  const [facingMode, setFacingMode] = useState('environment');
+  const [cameraUnavailable, setCameraUnavailable] = useState(false);
 
-  const setPhase = useCallback((nextPhase) => {
-    phaseRef.current = nextPhase;
-    setPhaseState(nextPhase);
-  }, []);
-
-  const stop = useCallback(() => {
-    run.current += 1;
-
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+  const stopCamera = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
 
     if (videoRef.current) {
-      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
   }, []);
 
-  const start = useCallback(async () => {
-    stop();
-    const mine = run.current;
-
+  const startCamera = useCallback(async () => {
+    stopCamera();
+    setLoading(true);
     setError('');
-    setPhase('starting');
+    setCameraUnavailable(false);
 
     if (!navigator.mediaDevices?.getUserMedia) {
-      setError("This browser can't show the camera inside the app.");
-      setPhase('blocked');
+      setLoading(false);
+      setCameraUnavailable(true);
+      setError('Live camera is unavailable in this browser. You can choose a photo instead.');
       return;
     }
 
@@ -68,373 +39,329 @@ export default function PaymentCamera({ onCapture, onClose }) {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
+          facingMode: { ideal: facingMode },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
         },
       });
 
-      // Ignore a camera request that completed after the component stopped it.
-      if (mine !== run.current) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
       streamRef.current = stream;
 
-      const [track] = stream.getVideoTracks();
-
-      track.addEventListener('ended', () => {
-        if (streamRef.current !== stream) return;
-
-        stop();
-
-        if (document.hidden) return;
-
-        setError('The camera stopped.');
-        setPhase('blocked');
-      });
-
-      // Enable continuous focus where supported.
-      track
-        .applyConstraints({
-          advanced: [{ focusMode: 'continuous' }],
-        })
-        .catch(() => {});
-
-      if (!videoRef.current) {
-        stream.getTracks().forEach((item) => item.stop());
+      const video = videoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
+        setLoading(false);
         return;
       }
 
-      videoRef.current.srcObject = stream;
-
-      try {
-        await videoRef.current.play();
-      } catch {
-        // Some browsers require a user gesture before playback.
-        if (mine === run.current) {
-          setError('Tap to retry the camera or use the phone camera.');
-          setPhase('blocked');
-        }
-      }
+      video.srcObject = stream;
+      await video.play();
+      setLoading(false);
     } catch (err) {
-      if (mine !== run.current) return;
+      stopCamera();
+      setLoading(false);
+      setCameraUnavailable(true);
 
-      setError(cameraErrorMessage(err));
-      setPhase('blocked');
-    }
-  }, [stop, setPhase]);
-
-  useEffect(() => {
-    start();
-
-    const onVisibility = () => {
-      if (document.hidden) {
-        stop();
-      } else if (
-        ['live', 'starting'].includes(phaseRef.current)
-      ) {
-        start();
+      if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        setError('Camera permission was denied. Allow camera access in your browser settings, or choose a photo instead.');
+      } else if (err.name === 'NotFoundError') {
+        setError('No camera was found. You can choose a photo instead.');
+      } else {
+        setError('Could not start the camera. Try again or choose a photo instead.');
       }
-    };
-
-    document.addEventListener('visibilitychange', onVisibility);
-
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-      stop();
-    };
-  }, [start, stop]);
+    }
+  }, [facingMode, stopCamera]);
 
   useEffect(() => {
-    const previousOverflow = document.body.style.overflow;
-
-    const onKey = (event) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('keydown', onKey);
-    document.body.style.overflow = 'hidden';
+    startCamera();
 
     return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
+      stopCamera();
     };
-  }, [onClose]);
+  }, [startCamera, stopCamera]);
 
-  async function takePhoto() {
+  const makePhoto = useCallback((source, isVideo = false) => {
+    const width = isVideo ? source.videoWidth : source.naturalWidth;
+    const height = isVideo ? source.videoHeight : source.naturalHeight;
+
+    if (!width || !height) {
+      setError('The image is not ready yet. Please try again.');
+      return;
+    }
+
+    // Resize large phone photos to keep uploads and local storage manageable.
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(width, height));
+    const canvas = document.createElement('canvas');
+
+    canvas.width = Math.round(width * scale);
+    canvas.height = Math.round(height * scale);
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      setError('Could not process the photo. Please try again.');
+      return;
+    }
+
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) {
+          setError('Could not process the photo. Please try again.');
+          return;
+        }
+
+        const reader = new FileReader();
+
+        reader.onload = () => {
+          setPhoto({
+            dataUrl: reader.result,
+            size: blob.size,
+          });
+          setError('');
+        };
+
+        reader.onerror = () => {
+          setError('Could not read the photo. Please try again.');
+        };
+
+        reader.readAsDataURL(blob);
+      },
+      'image/jpeg',
+      0.82
+    );
+  }, []);
+
+  const takePhoto = useCallback(() => {
     const video = videoRef.current;
 
-    if (busy || !video || phaseRef.current !== 'live') return;
-
-    setBusy(true);
-    setError('');
-
-    try {
-      const shot = await captureFrame(video);
-
-      video.pause();
-      source.current = 'live';
-
-      setPhoto(shot);
-      setPhase('review');
-    } catch (err) {
-      setError(err.message || 'Could not capture the photo.');
-    } finally {
-      setBusy(false);
+    if (!video || !video.videoWidth || !video.videoHeight) {
+      setError('The camera is not ready yet. Please wait a moment and try again.');
+      return;
     }
-  }
 
-  function openPhoneCamera() {
-    stop();
-    setPhase('blocked');
-    fileRef.current?.click();
-  }
+    makePhoto(video, true);
+  }, [makePhoto]);
 
-  async function onPhoneCameraPhoto(event) {
+  const onFileSelected = useCallback((event) => {
     const file = event.target.files?.[0];
-    event.target.value = '';
-
     if (!file) return;
 
-    setBusy(true);
-    setError('');
-
-    try {
-      const shot = await preparePhoto(file);
-
-      source.current = 'phone';
-      setPhoto(shot);
-      setPhase('review');
-    } catch (err) {
-      setError(err.message || 'Could not prepare the photo.');
-      setPhase('blocked');
-    } finally {
-      setBusy(false);
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file.');
+      event.target.value = '';
+      return;
     }
-  }
 
-  function retake() {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      makePhoto(image);
+      URL.revokeObjectURL(objectUrl);
+      event.target.value = '';
+    };
+
+    image.onerror = () => {
+      setError('Could not open that image. Please choose another.');
+      URL.revokeObjectURL(objectUrl);
+      event.target.value = '';
+    };
+
+    image.src = objectUrl;
+  }, [makePhoto]);
+
+  const closeCamera = useCallback(() => {
+    stopCamera();
+    onClose?.();
+  }, [onClose, stopCamera]);
+
+  const retakePhoto = useCallback(() => {
     setPhoto(null);
-
-    if (source.current === 'phone') {
-      openPhoneCamera();
-      return;
-    }
-
+    setError('');
     if (!streamRef.current) {
-      start();
-      return;
+      startCamera();
     }
+  }, [startCamera]);
 
-    setPhase('live');
-
-    videoRef.current?.play().catch(() => {
-      setError('Could not restart the camera. Please try again.');
-      setPhase('blocked');
-    });
-  }
-
-  function acceptPhoto() {
+  const acceptPhoto = useCallback(() => {
     if (!photo) return;
 
-    stop();
+    stopCamera();
     onCapture(photo);
-  }
+  }, [photo, onCapture, stopCamera]);
 
-  const canStream = Boolean(navigator.mediaDevices?.getUserMedia);
+  const switchCamera = useCallback(() => {
+    setFacingMode((current) =>
+      current === 'environment' ? 'user' : 'environment'
+    );
+  }, []);
+
+  if (typeof document === 'undefined') return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9999] flex flex-col overflow-hidden bg-black text-white"
+      className="fixed inset-0 z-[99999] flex flex-col overflow-hidden bg-black text-white"
       style={{
-        position: 'fixed',
-        inset: 0,
-        width: '100%',
         height: '100vh',
-        minHeight: '100dvh',
         maxHeight: '100dvh',
         paddingTop: 'env(safe-area-inset-top)',
-        paddingLeft: 'env(safe-area-inset-left)',
-        paddingRight: 'env(safe-area-inset-right)',
-        boxSizing: 'border-box',
+        paddingBottom: 'env(safe-area-inset-bottom)',
         overscrollBehavior: 'none',
       }}
       role="dialog"
       aria-modal="true"
-      aria-label="Take UPI payment photo"
+      aria-label="Take payment photo"
     >
-      {/* Header */}
-      <div className="flex shrink-0 items-center justify-between gap-3 px-4 py-3">
-        <h2 className="text-base font-bold">
-          UPI payment photo
-        </h2>
+      {/* Header remains visible */}
+      <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/15 px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-bold">Payment photo</h2>
+          <p className="text-xs text-white/65">
+            Keep the payment amount and reference visible
+          </p>
+        </div>
 
         <button
           type="button"
-          onClick={onClose}
-          className="flex h-10 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+          onClick={closeCamera}
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/15 text-2xl hover:bg-white/25"
           aria-label="Close camera"
         >
-          <Icon name="close" className="h-5 w-5" />
+          ×
         </button>
-      </div>
+      </header>
 
-      {/* Camera preview */}
-      <div className="relative min-h-0 w-full flex-1 overflow-hidden bg-black">
-        <video
-          ref={videoRef}
-          playsInline
-          muted
-          autoPlay
-          onPlaying={() => {
-            if (phaseRef.current === 'starting') {
-              setPhase('live');
-            }
-          }}
-          className="absolute inset-0 h-full w-full object-contain"
-        />
-
-        {phase === 'review' && photo && (
+      {/* Preview fills the available space; the page itself does not scroll */}
+      <main
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden bg-black"
+        style={{ touchAction: 'pan-y' }}
+      >
+        {photo ? (
           <img
             src={photo.dataUrl}
-            alt="UPI payment photo just taken"
-            className="absolute inset-0 h-full w-full object-contain"
+            alt="Captured payment"
+            className="h-full w-full object-contain"
           />
-        )}
-
-        {phase === 'starting' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-            <Spinner className="h-8 w-8 text-white" />
-
-            <p className="text-sm text-white/80">
-              Starting camera…
-            </p>
-
-            <button
-              type="button"
-              onClick={openPhoneCamera}
-              className="mt-2 min-h-10 cursor-pointer rounded-lg px-3 text-xs font-semibold text-white/70 underline underline-offset-2"
-            >
-              Use the phone camera instead
-            </button>
-          </div>
-        )}
-
-        {phase === 'blocked' && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 overflow-y-auto px-6 text-center">
-            {busy ? (
-              <>
-                <Spinner className="h-8 w-8 text-white" />
-                <p className="text-sm text-white/80">
-                  Preparing photo…
-                </p>
-              </>
-            ) : (
-              <>
-                <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-white/10">
-                  <Icon name="camera" className="h-8 w-8 text-white/80" />
-                </span>
-
-                <p className="max-w-xs text-sm leading-relaxed text-white/85">
-                  {error || 'Take the photo with the phone camera.'}
-                </p>
-
-                <div className="flex w-full max-w-xs flex-col gap-2">
-                  <button
-                    type="button"
-                    onClick={openPhoneCamera}
-                    className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-white px-4 text-sm font-bold text-slate-900 active:scale-[0.98]"
-                  >
-                    <Icon name="camera" className="h-5 w-5" />
-                    Open phone camera
-                  </button>
-
-                  {canStream && (
-                    <button
-                      type="button"
-                      onClick={start}
-                      className="min-h-11 cursor-pointer rounded-xl px-4 text-sm font-semibold text-white/80 hover:bg-white/10"
-                    >
-                      Try the in-app camera again
-                    </button>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Bottom controls */}
-      <div className="shrink-0 px-4 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-        {phase === 'review' ? (
+        ) : (
           <>
-            <p className="mb-3 text-center text-xs text-white/70">
-              Can you read the amount and UTR? If not, retake.
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              className="h-full w-full object-contain"
+              style={{
+                objectFit: 'contain',
+                backgroundColor: '#000',
+              }}
+            />
+
+            {loading && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black">
+                <div className="h-9 w-9 animate-spin rounded-full border-4 border-white/25 border-t-white" />
+                <p className="text-sm text-white/80">Starting camera…</p>
+              </div>
+            )}
+
+            {error && (
+              <div className="absolute left-4 right-4 top-4 rounded-xl bg-red-950/95 p-3 text-sm text-white">
+                {error}
+              </div>
+            )}
+
+            {cameraUnavailable && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center">
+                <p className="text-sm text-white/80">
+                  You can still upload a photo of the payment screen.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="rounded-xl bg-white px-5 py-3 font-semibold text-black"
+                >
+                  Choose photo
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </main>
+
+      {/* Controls stay visible at the bottom without scrolling */}
+      <footer className="flex shrink-0 flex-col gap-3 border-t border-white/15 bg-black px-4 pb-4 pt-3">
+        {photo ? (
+          <>
+            <p className="text-center text-sm text-green-300">
+              Photo ready · {(photo.size / 1024).toFixed(0)} KB
             </p>
 
-            <div className="mx-auto grid max-w-sm grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={retake}
-                className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl border border-white/40 px-4 text-sm font-semibold text-white active:scale-[0.98]"
+                onClick={retakePhoto}
+                className="min-h-12 rounded-xl border border-white/30 px-3 py-3 font-semibold"
               >
-                <Icon name="refresh" className="h-5 w-5" />
                 Retake
               </button>
-
               <button
                 type="button"
                 onClick={acceptPhoto}
-                className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-xl bg-brand-600 px-4 text-sm font-bold text-white active:scale-[0.98]"
+                className="min-h-12 rounded-xl bg-white px-3 py-3 font-bold text-black"
               >
-                <Icon name="check" className="h-5 w-5" />
                 Use photo
               </button>
             </div>
           </>
         ) : (
           <>
-            <p
-              className={`mb-3 text-center text-xs ${
-                error && phase === 'live'
-                  ? 'font-semibold text-red-300'
-                  : 'text-white/70'
-              }`}
-            >
-              {error && phase === 'live'
-                ? error
-                : 'Fit the whole UPI success screen — amount and UTR — in the frame'}
+            <p className="text-center text-xs text-white/65">
+              Centre the payment success screen in the preview
             </p>
 
-            <div className="flex justify-center">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="min-h-11 rounded-xl border border-white/25 px-3 py-2 text-sm font-semibold"
+              >
+                Upload
+              </button>
+
               <button
                 type="button"
                 onClick={takePhoto}
-                disabled={phase !== 'live' || busy}
+                disabled={loading || cameraUnavailable}
                 aria-label="Take photo"
-                className="flex h-[72px] w-[72px] shrink-0 cursor-pointer items-center justify-center rounded-full border-4 border-white transition-opacity active:scale-95 disabled:cursor-not-allowed disabled:opacity-40"
+                className="flex h-16 w-16 items-center justify-center rounded-full border-[5px] border-white disabled:opacity-40"
               >
-                <span className="h-14 w-14 rounded-full bg-white" />
+                <span className="h-11 w-11 rounded-full bg-white" />
+              </button>
+
+              <button
+                type="button"
+                onClick={switchCamera}
+                disabled={loading || cameraUnavailable}
+                className="min-h-11 rounded-xl border border-white/25 px-3 py-2 text-sm font-semibold disabled:opacity-40"
+              >
+                Flip camera
               </button>
             </div>
           </>
         )}
-      </div>
 
-      {/* Fallback to the device camera */}
-      <input
-        ref={fileRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        className="sr-only"
-        tabIndex={-1}
-        onChange={onPhoneCameraPhoto}
-      />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={onFileSelected}
+          className="hidden"
+          aria-label="Choose payment photo"
+        />
+      </footer>
     </div>,
     document.body
   );
