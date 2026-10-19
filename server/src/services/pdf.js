@@ -293,7 +293,7 @@ export function eventBillPdf(bill, event) {
   kv('Bill No', bill.billLabel || bill.ref, { bold: true });
   kv('Date', formatBillDate(bill.verifiedAt || bill.createdAt, bill.backdated));
   kv('Customer', bill.customerName);
-  kv('Mobile', `+91 ${bill.customerMobile}`);
+  if (bill.customerMobile) kv('Mobile', `+91 ${bill.customerMobile}`);
   rule();
 
   for (const l of lines) {
@@ -484,7 +484,7 @@ export function eventReportPdf(report) {
       [
         '',
         b.backdated ? 'past entry' : '',
-        `+91 ${b.customerMobile}`,
+        b.customerMobile ? `+91 ${b.customerMobile}` : '',
         `by ${b.billerName}`,
         b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'photo' : '') : '',
         '',
@@ -584,7 +584,7 @@ export async function eventScreenshotsPdf({ event, subtitle, bills, loadBatch, n
         doc.text(text, x, y + dy, { width: COL_W, ellipsis: true, height: size + 3 });
       };
       line(`Bill ${b.billLabel || b.ref} • ${formatBillDate(b.date, b.backdated)}`, 0, 'Helvetica-Bold', 8.5, INK);
-      line(`${b.customerName} • +91 ${b.customerMobile}`, 12, 'Helvetica', 8, INK);
+      line(b.customerMobile ? `${b.customerName} • +91 ${b.customerMobile}` : b.customerName, 12, 'Helvetica', 8, INK);
       line(`${formatINR(b.totalAmount)} • UPI ref ${b.upiRef || '—'}`, 23, 'Helvetica', 7.5, MUTED);
       line(`Billed by ${b.billerName}${img ? ` • SHA-256 ${img.sha256.slice(0, 12)}…` : ''}`, 33, 'Helvetica', 7, MUTED);
 

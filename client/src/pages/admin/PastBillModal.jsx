@@ -62,7 +62,7 @@ export default function PastBillModal({ open, event, items, onClose, onSaved }) 
     setError('');
     if (!form.billDate) return setError('Pick the date of the bill');
     if (form.customerName.trim().length < 2) return setError("Enter the customer's name");
-    if (!/^[6-9]\d{9}$/.test(form.customerMobile)) return setError("Enter the customer's 10-digit mobile number");
+    if (form.customerMobile && !/^[6-9]\d{9}$/.test(form.customerMobile)) return setError("Enter the customer's 10-digit mobile number");
     if (!lines.length) return setError('Enter the quantity for at least one item');
     if (overStock) return setError(`Only ${Math.max(0, overStock.available)} × ${overStock.name} left in stock`);
     if (!form.paymentMode) return setError('Choose how the customer paid — cash, UPI or credit');
@@ -123,7 +123,7 @@ export default function PastBillModal({ open, event, items, onClose, onSaved }) 
               placeholder="e.g. Rahul Sharma"
             />
           </Field>
-          <Field label="Customer mobile" required>
+          <Field label="Customer mobile" hint="Optional — leave blank if it isn't on the bill">
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-0 flex w-12 items-center justify-center text-sm font-semibold text-slate-400" aria-hidden="true">
                 +91

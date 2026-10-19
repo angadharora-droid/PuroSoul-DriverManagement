@@ -112,7 +112,7 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
               </td>
               <td className={td}>
                 <p className="font-medium text-slate-900">{b.customerName}</p>
-                <p className="tnum text-xs text-slate-500">+91 {b.customerMobile}</p>
+                {b.customerMobile && <p className="tnum text-xs text-slate-500">+91 {b.customerMobile}</p>}
               </td>
               <td className={`${td} text-slate-600`}>
                 {b.itemsLabel}

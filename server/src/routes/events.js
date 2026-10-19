@@ -523,7 +523,8 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
   if (customerName.length < 2) return res.status(400).json({ error: "Enter the customer's name" });
   if (customerName.length > 80) return res.status(400).json({ error: 'Customer name is too long' });
   const customerMobile = normalizeMobile(body.customerMobile);
-  if (!/^[6-9]\d{9}$/.test(customerMobile)) {
+  // Optional on a past bill (the number may not be on the paper record), but checked when given.
+  if ((customerMobile || !backdated) && !/^[6-9]\d{9}$/.test(customerMobile)) {
     return res.status(400).json({ error: "Enter the customer's 10-digit mobile number" });
   }
 

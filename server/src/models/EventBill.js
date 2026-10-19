@@ -56,8 +56,15 @@ const billSchema = new mongoose.Schema(
     },
     customerMobile: {
       type: String,
-      required: [true, 'Customer mobile is required'],
+      // An admin's past bill may not have the number on record; every live bill does.
+      required: [
+        function () {
+          return !this.backdated;
+        },
+        'Customer mobile is required',
+      ],
       trim: true,
+      default: '',
       match: [/^[6-9]\d{9}$/, 'Customer mobile must be a valid 10-digit mobile number'],
     },
 
