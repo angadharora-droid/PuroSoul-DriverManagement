@@ -1,19 +1,24 @@
 import mongoose from 'mongoose';
 
 export const EVENT_BILL_STATUSES = ['pending_otp', 'verified', 'expired', 'failed', 'cancelled'];
-export const PAYMENT_MODES = ['cash', 'upi'];
+export const PAYMENT_MODES = ['cash', 'upi', 'credit'];
+export const PAYMENT_LABELS = { cash: 'Cash', upi: 'UPI', credit: 'Credit' };
 
 /**
  * A mini bill raised by a collector at an event stall: who bought, how many of
  * each item (priced by the admin), and how they paid. A cash bill is confirmed
  * by an OTP sent to the CUSTOMER's mobile, exactly like a party collection; a
- * UPI bill is confirmed by its payment screenshot and is verified on save.
+ * UPI bill is confirmed by its payment screenshot, and a credit bill (the
+ * customer pays later) by the biller alone — both are verified on save. An
+ * admin can also enter a bill for an earlier day of the event (backdated),
+ * which is verified on save whatever the payment mode.
  * Once verified it is immutable except for notification bookkeeping.
  */
 const MUTABLE_AFTER_VERIFY = new Set(['notifyError', 'updatedAt']);
 
+// Only a cash bill raised live waits for the customer's OTP.
 function requiresOtp() {
-  return this.paymentMode !== 'upi';
+  return this.paymentMode === 'cash' && !this.backdated;
 }
 
 const lineSchema = new mongoose.Schema(
@@ -71,8 +76,8 @@ const billSchema = new mongoose.Schema(
     screenshot: { type: mongoose.Schema.Types.ObjectId, ref: 'EventAttachment', default: null },
     screenshotHash: { type: String, default: '' },
 
-    // Cash bills only — a UPI bill is proven by its stored payment screenshot
-    // and is final the moment it is saved, so it never has an OTP.
+    // Live cash bills only — UPI, credit and backdated bills are final the
+    // moment they are saved, so they never have an OTP.
     otpCodeHash: { type: String, required: requiresOtp },
     otpExpiresAt: { type: Date, required: requiresOtp },
     otpAttempts: { type: Number, default: 0 },
@@ -81,6 +86,10 @@ const billSchema = new mongoose.Schema(
 
     status: { type: String, enum: EVENT_BILL_STATUSES, default: 'pending_otp', index: true },
     verifiedAt: { type: Date },
+    // Entered by an admin after the fact for an earlier day of the event (e.g.
+    // from a paper bill): verifiedAt is set to that day, createdAt is when it
+    // was typed in.
+    backdated: { type: Boolean, default: false },
     notifyError: { type: String, default: '' },
 
     collectorIp: { type: String, default: '' },

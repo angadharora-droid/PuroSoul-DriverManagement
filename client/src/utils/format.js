@@ -21,6 +21,23 @@ export function formatDate(value) {
   return new Date(value).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
+/** An event bill's date — a past entry (backdated by an admin) has a day, but no real time of day. */
+export function formatBillDate(value, backdated) {
+  return backdated ? formatDate(value) : formatDateTime(value);
+}
+
+/** Accepts pasted "+91 98765-43210" / "098765 43210" and keeps the bare 10 digits. */
+export function cleanMobile(value) {
+  let d = String(value).replace(/\D/g, '');
+  if (d.length > 10 && d.startsWith('91')) d = d.slice(2);
+  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
+  return d.slice(0, 10);
+}
+
+// Event bill payment modes — must match PAYMENT_MODES in server/src/models/EventBill.js.
+export const PAYMENT_LABELS = { cash: 'Cash', upi: 'UPI', credit: 'Credit' };
+export const PAYMENT_ICONS = { cash: 'banknotes', upi: 'phone', credit: 'clock' };
+
 export function todayStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;

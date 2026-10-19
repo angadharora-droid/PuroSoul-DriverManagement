@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import mongoose from 'mongoose';
 import rateLimit from 'express-rate-limit';
 import Event from '../models/Event.js';
-import EventBill, { PAYMENT_MODES } from '../models/EventBill.js';
+import EventBill, { PAYMENT_MODES, PAYMENT_LABELS } from '../models/EventBill.js';
 import EventStockEntry from '../models/EventStockEntry.js';
 import EventAttachment, { SCREENSHOT_MAX_BYTES } from '../models/EventAttachment.js';
 import Receiver from '../models/Receiver.js';
@@ -12,10 +12,10 @@ import { requireAuth } from '../middleware/auth.js';
 import { httpError } from '../middleware/error.js';
 import { sendSms } from '../services/sms.js';
 import { collectionOtpMessage } from '../services/smsTemplates.js';
-import { stockPositions, eventSummaries, buildEventReport, billRow } from '../services/eventReport.js';
+import { stockPositions, eventSummaries, buildEventReport, billRow, istDay } from '../services/eventReport.js';
 import { eventBillPdf, eventReportPdf, eventScreenshotsPdf } from '../services/pdf.js';
 import { toCsv } from '../utils/csv.js';
-import { maskMobile, formatDateTime, formatDate, dayRange } from '../utils/format.js';
+import { maskMobile, formatDate, formatBillDate, dayRange } from '../utils/format.js';
 import {
   generateOtp,
   hashOtp,
@@ -43,13 +43,18 @@ function normalizeMobile(value) {
   return d;
 }
 
+// Only a cash bill raised live sends the customer an OTP SMS — UPI, credit and
+// an admin's past-dated bills send none.
+const sendsOtp = (body) => body?.paymentMode === 'cash' && !body?.billDate;
+
 // Abuse guard: a busy stall bills far faster than field collections, so the
 // per-biller ceiling is well above the collection limiter's 10.
 const billOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 60,
   keyGenerator: (req) => `event-bill:${req.user.id}`,
-  skip: (req) => req.body?.paymentMode === 'upi', // UPI bills send no SMS
+  // Resends carry no body, so they always count.
+  skip: (req) => Boolean(req.body?.paymentMode) && !sendsOtp(req.body),
   validate: false,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
@@ -62,7 +67,7 @@ const customerOtpLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
   keyGenerator: (req) => `event-customer:${normalizeMobile(req.body?.customerMobile)}`,
-  skip: (req) => req.body?.paymentMode === 'upi' || !/^\d{10}$/.test(normalizeMobile(req.body?.customerMobile)),
+  skip: (req) => !sendsOtp(req.body) || !/^\d{10}$/.test(normalizeMobile(req.body?.customerMobile)),
   skipFailedRequests: true,
   validate: false,
   standardHeaders: 'draft-8',
@@ -95,6 +100,24 @@ function decodeScreenshot(raw) {
 
 const billLabelOf = (b) => (b.billNo ? String(b.billNo).padStart(4, '0') : b._id.toString().slice(-8).toUpperCase());
 
+/** Why an admin's past-bill date (YYYY-MM-DD) can't be used, or null when it can. */
+function billDateProblem(event, date) {
+  // The round trip also catches dates like 2026-02-31, which Date rolls over into March.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || istDay(dayRange(date).start) !== date) return 'Pick the date of the bill';
+  if (date > istDay(new Date())) return "The bill date can't be in the future";
+  if (event.startDate && date < event.startDate) return `The event starts on ${formatDate(dayRange(event.startDate).start)}`;
+  if (event.endDate && date > event.endDate) return `The event ended on ${formatDate(dayRange(event.endDate).start)}`;
+  return null;
+}
+
+/**
+ * When a past-dated bill counts as made: midday on its day, so it lands in that
+ * day's report whatever the timezone — or now, if that's today and midday hasn't come.
+ */
+function backdatedAt(date) {
+  return new Date(Math.min(dayRange(date).start.getTime() + 12 * 60 * 60 * 1000, Date.now()));
+}
+
 function billView(b, event) {
   return {
     id: b._id,
@@ -116,6 +139,7 @@ function billView(b, event) {
     resendCooldownSeconds: OTP_RESEND_COOLDOWN_SECONDS,
     verifiedAt: b.verifiedAt,
     createdAt: b.createdAt,
+    backdated: Boolean(b.backdated),
     billerName: b.billerName,
     event: event ? { id: event._id, name: event.name, venue: event.venue } : { id: b.event },
   };
@@ -141,7 +165,7 @@ function adminEventView(e, summary) {
           canLogIn: Boolean(e.stockKeeper.passwordHash),
         }
       : null,
-    summary: summary || { amount: 0, bills: 0, quantity: 0, cash: 0, upi: 0 },
+    summary: summary || { amount: 0, bills: 0, quantity: 0, cash: 0, upi: 0, credit: 0 },
     createdAt: e.createdAt,
   };
 }
@@ -469,6 +493,12 @@ router.get('/bills/:billId/bill.pdf', requireAuth('admin', 'collector', 'receive
  * from the admin's item list. Cash: the OTP goes to the CUSTOMER's mobile and
  * the bill waits for it. UPI: no OTP — the bill must carry its payment
  * screenshot, the two are saved together, and the bill is final at once.
+ * Credit (the customer pays later): no OTP and no photo — final at once.
+ *
+ * An admin may add `billDate` (YYYY-MM-DD) to enter a bill for an earlier day
+ * of the event, e.g. one written on paper. It is final at once with no OTP
+ * (the customer isn't there), its photo is optional, it counts on that day,
+ * and it can be entered after the event has closed.
  */
 router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, customerOtpLimiter, async (req, res) => {
   const event = await Event.findById(req.params.id);
@@ -477,9 +507,18 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
   if (!isAdmin && !event.billers.some((id) => id.equals(req.user.id))) {
     return res.status(403).json({ error: 'You are not assigned to bill at this event' });
   }
-  if (event.status !== 'open') return res.status(400).json({ error: 'This event is closed — billing has stopped' });
 
   const body = req.body || {};
+  const billDate = body.billDate ? String(body.billDate) : '';
+  const backdated = Boolean(billDate);
+  if (backdated) {
+    if (!isAdmin) return res.status(403).json({ error: 'Only an admin can enter a bill for an earlier date' });
+    const problem = billDateProblem(event, billDate);
+    if (problem) return res.status(400).json({ error: problem });
+  } else if (event.status !== 'open') {
+    return res.status(400).json({ error: 'This event is closed — billing has stopped' });
+  }
+
   const customerName = String(body.customerName || '').trim().replace(/\s+/g, ' ');
   if (customerName.length < 2) return res.status(400).json({ error: "Enter the customer's name" });
   if (customerName.length > 80) return res.status(400).json({ error: 'Customer name is too long' });
@@ -522,7 +561,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
 
   const paymentMode = String(body.paymentMode || '');
   if (!PAYMENT_MODES.includes(paymentMode)) {
-    return res.status(400).json({ error: 'Choose how the customer paid — cash or UPI' });
+    return res.status(400).json({ error: 'Choose how the customer paid — cash, UPI or credit' });
   }
 
   let upiRef = '';
@@ -532,10 +571,12 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     if (upiRef && !/^[A-Z0-9-]{4,40}$/.test(upiRef)) {
       return res.status(400).json({ error: 'UPI reference should be the letters and numbers from the payment' });
     }
-    shot = decodeScreenshot(body.screenshot);
+    // A past bill may have no photo left to show — the admin entering it vouches for it.
+    if (!backdated || body.screenshot) shot = decodeScreenshot(body.screenshot);
 
     // One UPI payment can only ever pay for one bill — anywhere, at any event.
-    const reused = await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo');
+    const reused =
+      shot && (await EventBill.findOne({ screenshotHash: shot.sha256, status: { $ne: 'cancelled' } }).select('billNo'));
     if (reused) {
       return res.status(409).json({
         error: `This photo is already attached to bill ${billLabelOf(reused)} — each UPI payment needs its own photo.`,
@@ -554,20 +595,21 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     ? await EventAttachment.create({ ...shot, bill: billId, event: event._id, uploadedBy: req.user.id })
     : null;
 
-  const isUpi = paymentMode === 'upi';
-  const code = isUpi ? null : generateOtp();
+  const needsOtp = paymentMode === 'cash' && !backdated;
+  const code = needsOtp ? generateOtp() : null;
   let bill;
   try {
-    // UPI: the stored screenshot is the proof of payment, so the bill is final
-    // (numbered, verified) the moment it is saved. Cash: wait for the customer's OTP.
-    const confirmation = isUpi
-      ? {
+    // Cash raised live: wait for the customer's OTP. Everything else is final
+    // (numbered, verified) the moment it is saved — UPI is proven by its stored
+    // screenshot, credit is the biller's own record, a past bill the admin's.
+    const confirmation = needsOtp
+      ? { status: 'pending_otp', otpCodeHash: await hashOtp(code), otpExpiresAt: otpExpiry(), lastOtpSentAt: new Date() }
+      : {
           status: 'verified',
-          verifiedAt: new Date(),
+          verifiedAt: backdated ? backdatedAt(billDate) : new Date(),
           billNo: (await Event.findByIdAndUpdate(event._id, { $inc: { billSeq: 1 } }, { new: true, projection: { billSeq: 1 } }))
             .billSeq,
-        }
-      : { status: 'pending_otp', otpCodeHash: await hashOtp(code), otpExpiresAt: otpExpiry(), lastOtpSentAt: new Date() };
+        };
     bill = await EventBill.create({
       _id: billId,
       event: event._id,
@@ -583,6 +625,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
       upiRef,
       screenshot: shotDoc?._id || null,
       screenshotHash: shot?.sha256 || '',
+      backdated,
       ...confirmation,
       collectorIp: req.ip || '',
       deviceInfo: (req.get('user-agent') || '').slice(0, 300),
@@ -594,7 +637,7 @@ router.post('/:id/bills', requireAuth('collector', 'admin'), billOtpLimiter, cus
     throw err;
   }
 
-  if (isUpi) {
+  if (!needsOtp) {
     return res.status(201).json({ bill: billView(bill, event), verified: true, message: `Bill ${bill.billLabel} saved` });
   }
 
@@ -730,15 +773,16 @@ router.get('/:id/report', requireAuth('admin', 'receiver'), async (req, res) => 
       const qty = new Map(b.lines.map((l) => [String(l.item), l.quantity]));
       return [
         b.billLabel,
-        formatDateTime(b.date),
+        formatBillDate(b.date, b.backdated),
         b.customerName,
         b.customerMobile,
         ...items.map((i) => qty.get(String(i.id)) || ''),
         b.totalQuantity,
         b.totalAmount.toFixed(2),
-        b.paymentMode === 'upi' ? 'UPI' : 'Cash',
+        PAYMENT_LABELS[b.paymentMode] || b.paymentMode,
         b.upiRef,
         b.hasScreenshot ? 'yes' : '',
+        b.backdated ? 'yes' : '',
         b.billerName,
         b.ref,
       ];
@@ -752,7 +796,8 @@ router.get('/:id/report', requireAuth('admin', 'receiver'), async (req, res) => 
       ...items.map((i) => soldById.get(String(i.id)) || 0),
       t.quantity,
       t.amount.toFixed(2),
-      `Cash ${t.cash.toFixed(2)} / UPI ${t.upi.toFixed(2)}`,
+      `Cash ${t.cash.toFixed(2)} / UPI ${t.upi.toFixed(2)} / Credit ${t.credit.toFixed(2)}`,
+      '',
       '',
       '',
       '',
@@ -770,6 +815,7 @@ router.get('/:id/report', requireAuth('admin', 'receiver'), async (req, res) => 
         'Payment',
         'UPI Ref',
         'Payment Photo',
+        'Past Entry',
         'Billed By',
         'Ref',
       ],

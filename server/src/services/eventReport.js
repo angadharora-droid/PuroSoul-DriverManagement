@@ -1,5 +1,5 @@
 import Event from '../models/Event.js';
-import EventBill from '../models/EventBill.js';
+import EventBill, { PAYMENT_MODES } from '../models/EventBill.js';
 import EventStockEntry from '../models/EventStockEntry.js';
 import { dayRange, formatDate } from '../utils/format.js';
 
@@ -83,13 +83,21 @@ export async function eventSummaries(eventIds) {
         quantity: { $sum: '$totalQuantity' },
         cash: { $sum: { $cond: [{ $eq: ['$paymentMode', 'cash'] }, '$totalAmount', 0] } },
         upi: { $sum: { $cond: [{ $eq: ['$paymentMode', 'upi'] }, '$totalAmount', 0] } },
+        credit: { $sum: { $cond: [{ $eq: ['$paymentMode', 'credit'] }, '$totalAmount', 0] } },
       },
     },
   ]);
   return new Map(
     rows.map((r) => [
       String(r._id),
-      { amount: round2(r.amount), bills: r.bills, quantity: r.quantity, cash: round2(r.cash), upi: round2(r.upi) },
+      {
+        amount: round2(r.amount),
+        bills: r.bills,
+        quantity: r.quantity,
+        cash: round2(r.cash),
+        upi: round2(r.upi),
+        credit: round2(r.credit),
+      },
     ])
   );
 }
@@ -116,24 +124,22 @@ export function billRow(b) {
     hasScreenshot: Boolean(b.screenshot),
     screenshotHash: b.screenshotHash,
     billerName: b.billerName,
+    backdated: Boolean(b.backdated),
   };
 }
 
 function emptyBucket(extra = {}) {
-  return { bills: 0, quantity: 0, amount: 0, cash: 0, upi: 0, cashBills: 0, upiBills: 0, ...extra };
+  return { bills: 0, quantity: 0, amount: 0, cash: 0, upi: 0, credit: 0, cashBills: 0, upiBills: 0, creditBills: 0, ...extra };
 }
 
+/** Adds a bill to the totals and to its payment mode's own amount and count (cash / upi / credit). */
 function addToBucket(bucket, b) {
   bucket.bills += 1;
   bucket.quantity += b.totalQuantity;
   bucket.amount = round2(bucket.amount + b.totalAmount);
-  if (b.paymentMode === 'upi') {
-    bucket.upi = round2(bucket.upi + b.totalAmount);
-    bucket.upiBills += 1;
-  } else {
-    bucket.cash = round2(bucket.cash + b.totalAmount);
-    bucket.cashBills += 1;
-  }
+  const mode = PAYMENT_MODES.includes(b.paymentMode) ? b.paymentMode : 'cash';
+  bucket[mode] = round2(bucket[mode] + b.totalAmount);
+  bucket[`${mode}Bills`] += 1;
 }
 
 /**
@@ -237,6 +243,7 @@ export async function eventDaySummary(date) {
         amount: { $sum: '$totalAmount' },
         cash: { $sum: { $cond: [{ $eq: ['$paymentMode', 'cash'] }, '$totalAmount', 0] } },
         upi: { $sum: { $cond: [{ $eq: ['$paymentMode', 'upi'] }, '$totalAmount', 0] } },
+        credit: { $sum: { $cond: [{ $eq: ['$paymentMode', 'credit'] }, '$totalAmount', 0] } },
       },
     },
   ]);
@@ -253,6 +260,7 @@ export async function eventDaySummary(date) {
       amount: round2(r.amount),
       cash: round2(r.cash),
       upi: round2(r.upi),
+      credit: round2(r.credit),
     }))
     .sort((a, b) => b.amount - a.amount);
   return {

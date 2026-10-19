@@ -107,6 +107,7 @@ export default function Events() {
                 </div>
                 <span className="tnum text-slate-500">
                   Cash {formatINR(e.summary.cash)} • UPI {formatINR(e.summary.upi)}
+                  {e.summary.credit > 0 && ` • Credit ${formatINR(e.summary.credit)}`}
                 </span>
               </div>
             </div>

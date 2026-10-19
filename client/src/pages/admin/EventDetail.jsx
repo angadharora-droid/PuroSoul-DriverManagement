@@ -5,8 +5,9 @@ import { Button, Alert, StatCard, TableSkeleton, PageHeader, StatusBadge, EmptyS
 import Icon from '../../components/icons';
 import ScreenshotViewer from '../../components/ScreenshotViewer';
 import { useToast } from '../../components/toast';
-import { formatINR, formatDateTime, STATUS_LABELS } from '../../utils/format';
+import { formatINR, formatDateTime, formatBillDate, STATUS_LABELS, PAYMENT_LABELS } from '../../utils/format';
 import { EventModal, EventStatusChip, eventDates } from './Events';
+import PastBillModal from './PastBillModal';
 
 // Must match SCREENSHOTS_PER_PDF in server/src/routes/events.js.
 const SCREENSHOTS_PER_PDF = 150;
@@ -36,7 +37,7 @@ function SplitTable({ rows, firstLabel, labelOf, totals, extra }) {
   if (!rows.length) return <p className="px-4 py-6 text-center text-sm text-slate-500">No verified bills yet.</p>;
   return (
     <div className="relative overflow-x-auto">
-      <table className="w-full min-w-[520px] text-sm">
+      <table className="w-full min-w-[620px] text-sm">
         <thead>
           <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
             <th className={th}>{firstLabel}</th>
@@ -44,6 +45,7 @@ function SplitTable({ rows, firstLabel, labelOf, totals, extra }) {
             <th className={thR}>Qty</th>
             <th className={thR}>Cash</th>
             <th className={thR}>UPI</th>
+            <th className={thR}>Credit</th>
             <th className={thR}>Total</th>
             {extra && <th className={th}><span className="sr-only">Actions</span></th>}
           </tr>
@@ -56,6 +58,7 @@ function SplitTable({ rows, firstLabel, labelOf, totals, extra }) {
               <td className={tdR}>{r.quantity}</td>
               <td className={tdR}>{formatINR(r.cash)}</td>
               <td className={tdR}>{formatINR(r.upi)}</td>
+              <td className={tdR}>{formatINR(r.credit)}</td>
               <td className={`${tdR} font-semibold`}>{formatINR(r.amount)}</td>
               {extra && <td className="whitespace-nowrap px-3 py-1.5 text-right">{extra(r)}</td>}
             </tr>
@@ -66,6 +69,7 @@ function SplitTable({ rows, firstLabel, labelOf, totals, extra }) {
             <td className={tdR}>{totals.quantity}</td>
             <td className={tdR}>{formatINR(totals.cash)}</td>
             <td className={tdR}>{formatINR(totals.upi)}</td>
+            <td className={tdR}>{formatINR(totals.credit)}</td>
             <td className={tdR}>{formatINR(totals.amount)}</td>
             {extra && <td />}
           </tr>
@@ -98,7 +102,14 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
                 {showStatus ? b.ref : b.billLabel}
                 {showStatus && <div className="mt-1"><StatusBadge status={b.status} /></div>}
               </td>
-              <td className={`${td} whitespace-nowrap text-slate-600`}>{formatDateTime(b.date)}</td>
+              <td className={`${td} whitespace-nowrap text-slate-600`}>
+                {formatBillDate(b.date, b.backdated)}
+                {b.backdated && (
+                  <p className="mt-0.5 text-xs font-semibold text-amber-700" title={`Entered ${formatDateTime(b.createdAt)}`}>
+                    Past entry
+                  </p>
+                )}
+              </td>
               <td className={td}>
                 <p className="font-medium text-slate-900">{b.customerName}</p>
                 <p className="tnum text-xs text-slate-500">+91 {b.customerMobile}</p>
@@ -108,7 +119,7 @@ function BillRows({ bills, onScreenshot, onBillPdf, onCancel, showStatus }) {
                 <span className="tnum text-xs text-slate-400"> ({b.totalQuantity})</span>
               </td>
               <td className={td}>
-                <span className="font-semibold text-slate-800">{b.paymentMode === 'upi' ? 'UPI' : 'Cash'}</span>
+                <span className="font-semibold text-slate-800">{PAYMENT_LABELS[b.paymentMode] || b.paymentMode}</span>
                 {b.upiRef && <p className="tnum font-mono text-xs text-slate-500">{b.upiRef}</p>}
               </td>
               <td className={`${tdR} font-semibold text-slate-900`}>{formatINR(b.totalAmount)}</td>
@@ -161,6 +172,7 @@ export default function EventDetail({ readOnly = false }) {
   const [report, setReport] = useState(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null);
+  const [addingPast, setAddingPast] = useState(false);
   const [viewShot, setViewShot] = useState(null);
   const [downloading, setDownloading] = useState('');
   const [search, setSearch] = useState('');
@@ -263,6 +275,10 @@ export default function EventDetail({ readOnly = false }) {
         {event.status === 'open' && readOnly && (
           <Button variant="secondary" icon="cube" onClick={() => navigate('/events/stock')}>Record stock</Button>
         )}
+        {/* Past bills can be entered even after the event has closed. */}
+        {!readOnly && (
+          <Button variant="secondary" icon="calendar" onClick={() => setAddingPast(true)}>Add past bill</Button>
+        )}
         <Button variant="secondary" icon="refresh" onClick={load}>Refresh</Button>
         {!readOnly && <Button variant="secondary" icon="adjustments" onClick={() => setEditing(event)}>Edit</Button>}
         <Button variant="secondary" icon="download" loading={downloading === 'csv'} onClick={() => download('csv', `/api/events/${id}/report`, { format: 'csv' }, 'event-report.csv')}>
@@ -310,14 +326,13 @@ export default function EventDetail({ readOnly = false }) {
         ) : null}
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-        <div className="col-span-2 sm:col-span-1">
-          <StatCard label="Total sales" value={formatINR(totals.amount)} icon="banknotes" accent />
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <StatCard label="Total sales" value={formatINR(totals.amount)} icon="banknotes" accent />
         <StatCard label="Bills" value={totals.bills} icon="receipt" />
         <StatCard label="Units sold" value={totals.quantity} icon="cube" />
         <StatCard label={`Cash (${totals.cashBills})`} value={formatINR(totals.cash)} icon="banknotes" />
         <StatCard label={`UPI (${totals.upiBills})`} value={formatINR(totals.upi)} icon="phone" />
+        <StatCard label={`Credit (${totals.creditBills})`} value={formatINR(totals.credit)} icon="clock" />
       </div>
 
       {otherStatuses.length > 0 && (
@@ -374,7 +389,7 @@ export default function EventDetail({ readOnly = false }) {
       </Card>
 
       <div className="grid gap-4 xl:grid-cols-2">
-        <Card title="Collector-wise" subtitle="Cash column = the cash each collector should be holding from this event.">
+        <Card title="Collector-wise" subtitle="Cash column = the cash each collector should be holding from this event. Credit is still owed by the customers.">
           <SplitTable rows={report.byBiller} firstLabel="Billed by" labelOf={(r) => r.name} totals={totals} />
         </Card>
         <Card
@@ -422,7 +437,7 @@ export default function EventDetail({ readOnly = false }) {
 
       <Card
         title={`Bills (${report.bills.length})`}
-        subtitle="Cash bills are confirmed by the customer's OTP, UPI bills by the stored payment photo. Bills can't be changed once confirmed."
+        subtitle="Cash bills are confirmed by the customer's OTP, UPI bills by the stored payment photo, credit bills by the biller. Past entries were added later by an admin. Bills can't be changed once confirmed."
         actions={
           <div className="flex flex-wrap gap-2">
             <div className="relative w-56">
@@ -440,9 +455,10 @@ export default function EventDetail({ readOnly = false }) {
             </div>
             <div className="w-36">
               <select className={`${inputClass} min-h-9 py-1.5`} value={mode} onChange={(e) => setMode(e.target.value)} aria-label="Payment mode">
-                <option value="">Cash + UPI</option>
+                <option value="">All payments</option>
                 <option value="cash">Cash only</option>
                 <option value="upi">UPI only</option>
+                <option value="credit">Credit only</option>
               </select>
             </div>
           </div>
@@ -513,6 +529,18 @@ export default function EventDetail({ readOnly = false }) {
       </Card>
 
       <ScreenshotViewer bill={viewShot} onClose={() => setViewShot(null)} />
+      {!readOnly && (
+        <PastBillModal
+          open={addingPast}
+          event={event}
+          items={report.items}
+          onClose={() => setAddingPast(false)}
+          onSaved={() => {
+            setAddingPast(false);
+            load();
+          }}
+        />
+      )}
       {!readOnly && (
         <EventModal
           event={editing}

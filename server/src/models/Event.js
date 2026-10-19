@@ -48,7 +48,8 @@ const eventSchema = new mongoose.Schema(
     // login — see Receiver.canCollect).
     stockKeeper: { type: mongoose.Schema.Types.ObjectId, ref: 'Receiver', default: null },
     // Closed events take no new bills or stock entries; bills already awaiting
-    // OTP can still be verified, since the customer has usually paid by then.
+    // OTP can still be verified, since the customer has usually paid by then,
+    // and an admin can still enter past-dated bills.
     status: { type: String, enum: ['open', 'closed'], default: 'open', index: true },
     notes: { type: String, trim: true, default: '', maxlength: 500 },
     // Last bill number handed out. Bumped atomically when a bill is verified,

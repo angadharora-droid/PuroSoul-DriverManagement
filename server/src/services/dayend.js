@@ -125,13 +125,15 @@ function dayEndHtml(report, handovers, events) {
   </div>`;
 }
 
-/** Event stall sales for the day, split cash / UPI — omitted on days with none. */
+/** Event stall sales for the day, split cash / UPI / credit — omitted on days with none. */
 function eventSalesHtml(events, cell) {
   if (!events?.bills) return '';
   const rows = events.events
     .map(
       (e) =>
-        `<tr><td style="${cell};color:#0f172a">${e.name}<br/><span style="color:#94a3b8;font-size:11px">Cash ${formatINR(e.cash)} • UPI ${formatINR(e.upi)} • ${e.quantity} units</span></td>` +
+        `<tr><td style="${cell};color:#0f172a">${e.name}<br/><span style="color:#94a3b8;font-size:11px">Cash ${formatINR(e.cash)} • UPI ${formatINR(e.upi)}${
+          e.credit ? ` • Credit ${formatINR(e.credit)}` : ''
+        } • ${e.quantity} units</span></td>` +
         `<td style="${cell};color:#64748b;text-align:center">${e.bills}</td>` +
         `<td style="${cell};color:#0f172a;font-weight:600;text-align:right">${formatINR(e.amount)}</td></tr>`
     )

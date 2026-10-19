@@ -121,9 +121,13 @@ const fakeBill = {
 };
 const miniBill = await eventBillPdf(fakeBill, { name: 'Test Expo 2026', venue: 'Hall 3, Test Grounds' });
 console.log(`ok  event mini bill PDF rendered (${miniBill.length} bytes)`);
+const creditBill = { ...fakeBill, billLabel: '0002', paymentMode: 'credit', upiRef: '', backdated: true };
+const creditMiniBill = await eventBillPdf(creditBill, { name: 'Test Expo 2026' });
+console.log(`ok  backdated credit mini bill PDF rendered (${creditMiniBill.length} bytes)`);
 
-const bucket = { bills: 1, quantity: 3, amount: 570, cash: 0, upi: 570, cashBills: 0, upiBills: 1 };
+const bucket = { bills: 2, quantity: 6, amount: 1140, cash: 0, upi: 570, credit: 570, cashBills: 0, upiBills: 1, creditBills: 1 };
 const billRowFake = { ...fakeBill, id: 'b1', date: new Date(), itemsLabel: '2 × 1L Bottle (case of 12), 1 × 20L Jar', hasScreenshot: true };
+const creditRowFake = { ...billRowFake, ...creditBill, id: 'b2', hasScreenshot: false };
 const eventReport = await eventReportPdf({
   event: { name: 'Test Expo 2026', venue: 'Hall 3', startDate: '2026-10-07', endDate: '2026-10-09', status: 'open' },
   generatedAt: new Date(),
@@ -135,8 +139,8 @@ const eventReport = await eventReportPdf({
   ],
   byBiller: [{ ...bucket, name: 'Test Collector' }],
   days: [{ ...bucket, date: '2026-10-07', label: '07 Oct 2026' }],
-  bills: [billRowFake],
-  statusCounts: { verified: { count: 1, amount: 570 }, cancelled: { count: 1, amount: 90 } },
+  bills: [billRowFake, creditRowFake],
+  statusCounts: { verified: { count: 2, amount: 1140 }, cancelled: { count: 1, amount: 90 } },
   stockEntries: [{ date: new Date(), itemName: '1L Bottle (case of 12)', kind: 'in', quantity: 40, note: 'Opening stock', enteredByName: 'Test Receiver' }],
 });
 console.log(`ok  event report PDF rendered (${eventReport.length} bytes)`);

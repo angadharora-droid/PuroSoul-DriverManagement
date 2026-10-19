@@ -1,5 +1,6 @@
 import PDFDocument from 'pdfkit';
-import { formatINR, formatDateTime } from '../utils/format.js';
+import { formatINR, formatDateTime, formatBillDate } from '../utils/format.js';
+import { PAYMENT_LABELS } from '../models/EventBill.js';
 
 const COMPANY = process.env.COMPANY_NAME || 'Puro Soul';
 const INK = '#0f172a';
@@ -247,8 +248,18 @@ export function reportPdf(report) {
 // ------------------------------------------------------------------ events ---
 
 const amountOnly = (n) => formatINR(n).replace('Rs. ', '');
+const payLabel = (mode) => PAYMENT_LABELS[mode] || mode;
 const MINI_W = 227; // 80 mm — prints on a thermal roll and reads well when shared on a phone
 const MINI_M = 14;
+
+/** The mini bill's closing line: how this bill was confirmed. */
+function miniBillProof(bill) {
+  const later = 'Entered later by the admin from the event records.';
+  if (bill.paymentMode === 'credit') return `On credit — this amount is still to be paid by the customer.${bill.backdated ? ` ${later}` : ''}`;
+  if (bill.backdated) return later;
+  if (bill.paymentMode === 'upi') return 'Paid by UPI — the payment photo is on file with this bill.';
+  return `Confirmed by the customer with the OTP sent to +91 ••••••${String(bill.customerMobile).slice(-4)}.`;
+}
 
 /** Customer-facing mini bill for one verified event sale. */
 export function eventBillPdf(bill, event) {
@@ -280,7 +291,7 @@ export function eventBillPdf(bill, event) {
   rule();
 
   kv('Bill No', bill.billLabel || bill.ref, { bold: true });
-  kv('Date', formatDateTime(bill.verifiedAt || bill.createdAt));
+  kv('Date', formatBillDate(bill.verifiedAt || bill.createdAt, bill.backdated));
   kv('Customer', bill.customerName);
   kv('Mobile', `+91 ${bill.customerMobile}`);
   rule();
@@ -296,20 +307,13 @@ export function eventBillPdf(bill, event) {
 
   kv('Total qty', String(bill.totalQuantity));
   kv('TOTAL', formatINR(bill.totalAmount), { bold: true, size: 11 });
-  kv('Paid by', bill.paymentMode === 'upi' ? 'UPI' : 'Cash', { bold: true });
+  kv('Paid by', payLabel(bill.paymentMode), { bold: true });
   if (bill.upiRef) kv('UPI ref', bill.upiRef);
   kv('Billed by', bill.billerName || '—');
   rule();
 
   doc.font('Helvetica').fontSize(7).fillColor(MUTED);
-  doc.text(
-    bill.paymentMode === 'upi'
-      ? 'Paid by UPI — the payment photo is on file with this bill.'
-      : `Confirmed by the customer with the OTP sent to +91 ••••••${String(bill.customerMobile).slice(-4)}.`,
-    MINI_M,
-    y,
-    { width: W, align: 'center' }
-  );
+  doc.text(miniBillProof(bill), MINI_M, y, { width: W, align: 'center' });
   y = doc.y + 6;
   center('Thank you!', 9, 'Helvetica-Bold', ACCENT);
 
@@ -357,7 +361,7 @@ function eventPeriod(event) {
 
 /**
  * Whole-event report: sales summary, item-wise stock reconciliation,
- * receiver-wise and day-wise cash/UPI, every verified bill, the stock ledger.
+ * collector-wise and day-wise cash/UPI/credit, every verified bill, the stock ledger.
  * report = buildEventReport() output.
  */
 export function eventReportPdf(report) {
@@ -374,13 +378,14 @@ export function eventReportPdf(report) {
   doc.fillColor(MUTED).font('Helvetica').fontSize(8).text('TOTAL SALES (VERIFIED BILLS)', 66, y + 10);
   doc.fillColor(ACCENT).font('Helvetica-Bold').fontSize(18).text(formatINR(totals.amount), 66, y + 22);
   doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(`${totals.bills} bills • ${totals.quantity} units sold`, 66, y + 46);
-  const money = (label, amount, count, x) => {
-    doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(label, x, y + 10);
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(12).text(formatINR(amount), x, y + 22, { width: 115 });
-    doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(`${count} bill${count === 1 ? '' : 's'}`, x, y + 40);
+  // One row per payment mode down the right of the band.
+  const money = (label, amount, count, dy) => {
+    doc.fillColor(MUTED).font('Helvetica').fontSize(8).text(`${label} • ${count} bill${count === 1 ? '' : 's'}`, 300, y + dy + 2, { width: 110 });
+    doc.fillColor(INK).font('Helvetica-Bold').fontSize(11).text(formatINR(amount), 410, y + dy, { width: 119, align: 'right' });
   };
-  money('CASH', totals.cash, totals.cashBills, 300);
-  money('UPI', totals.upi, totals.upiBills, 425);
+  money('CASH', totals.cash, totals.cashBills, 10);
+  money('UPI', totals.upi, totals.upiBills, 27);
+  money('CREDIT', totals.credit, totals.creditBills, 44);
   y += 80;
 
   // Item-wise stock & sales
@@ -410,14 +415,15 @@ export function eventReportPdf(report) {
   y = evRow(doc, y + 3, itemCols, ['Total', '', report.stock.stockIn, report.stock.stockOut, totals.quantity, report.stock.remaining, formatINR(totals.amount)], { bold: true });
   y += 10;
 
-  // Collector-wise and day-wise cash / UPI
+  // Collector-wise and day-wise cash / UPI / credit
   const splitCols = (first) => [
-    { label: first, x: 50, w: 165 },
-    { label: 'Bills', x: 215, w: 45, align: 'right' },
-    { label: 'Qty', x: 260, w: 50, align: 'right' },
-    { label: 'Cash', x: 310, w: 80, align: 'right' },
-    { label: 'UPI', x: 390, w: 75, align: 'right' },
-    { label: 'Total', x: 465, w: 80, align: 'right' },
+    { label: first, x: 50, w: 140 },
+    { label: 'Bills', x: 190, w: 40, align: 'right' },
+    { label: 'Qty', x: 230, w: 45, align: 'right' },
+    { label: 'Cash', x: 275, w: 68, align: 'right' },
+    { label: 'UPI', x: 343, w: 67, align: 'right' },
+    { label: 'Credit', x: 410, w: 67, align: 'right' },
+    { label: 'Total', x: 477, w: 68, align: 'right' },
   ];
   const splitTable = (title, note, cols, rows, labelOf) => {
     y = evSection(doc, y, title, note);
@@ -429,14 +435,26 @@ export function eventReportPdf(report) {
     }
     for (const r of rows) {
       y = evSpace(doc, y, 30, cols);
-      y = evRow(doc, y, cols, [labelOf(r), r.bills, r.quantity, amountOnly(r.cash), amountOnly(r.upi), amountOnly(r.amount)]);
+      y = evRow(doc, y, cols, [labelOf(r), r.bills, r.quantity, amountOnly(r.cash), amountOnly(r.upi), amountOnly(r.credit), amountOnly(r.amount)]);
     }
     y = evSpace(doc, y, 30, cols);
     doc.moveTo(50, y - 2).lineTo(545, y - 2).strokeColor(LINE).stroke();
-    y = evRow(doc, y + 3, cols, ['Total', totals.bills, totals.quantity, amountOnly(totals.cash), amountOnly(totals.upi), amountOnly(totals.amount)], { bold: true });
+    y = evRow(
+      doc,
+      y + 3,
+      cols,
+      ['Total', totals.bills, totals.quantity, amountOnly(totals.cash), amountOnly(totals.upi), amountOnly(totals.credit), amountOnly(totals.amount)],
+      { bold: true }
+    );
     y += 10;
   };
-  splitTable('Collector-wise', 'Cash column = cash each collector should be holding from this event.', splitCols('Billed by'), report.byBiller, (r) => r.name);
+  splitTable(
+    'Collector-wise',
+    'Cash column = cash each collector should be holding from this event. Credit is still owed by the customers.',
+    splitCols('Billed by'),
+    report.byBiller,
+    (r) => r.name
+  );
   splitTable('Day-wise', null, splitCols('Date'), report.days, (d) => d.label);
 
   // Every verified bill
@@ -449,16 +467,28 @@ export function eventReportPdf(report) {
     { label: 'Amount', x: 470, w: 75, align: 'right' },
   ];
   const muted = Object.fromEntries(billCols.map((_, i) => [i, MUTED]));
-  y = evSection(doc, y, `Bills (${report.bills.length})`, 'Confirmed bills only — cash bills by an OTP sent to the customer, UPI bills by the stored payment photo.');
+  y = evSection(
+    doc,
+    y,
+    `Bills (${report.bills.length})`,
+    'Confirmed bills only — cash bills by an OTP sent to the customer, UPI bills by the stored payment photo, credit bills by the biller. Past entries were added later by an admin.'
+  );
   y = evTableHeader(doc, y, billCols);
   for (const b of report.bills) {
     y = evSpace(doc, y, 36, billCols);
-    evRow(doc, y, billCols, [b.billLabel, formatDateTime(b.date), b.customerName, b.itemsLabel, b.paymentMode === 'upi' ? 'UPI' : 'Cash', amountOnly(b.totalAmount)]);
+    evRow(doc, y, billCols, [b.billLabel, formatBillDate(b.date, b.backdated), b.customerName, b.itemsLabel, payLabel(b.paymentMode), amountOnly(b.totalAmount)]);
     evRow(
       doc,
       y + 11,
       billCols,
-      ['', '', `+91 ${b.customerMobile}`, `by ${b.billerName}`, b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'photo' : '') : '', ''],
+      [
+        '',
+        b.backdated ? 'past entry' : '',
+        `+91 ${b.customerMobile}`,
+        `by ${b.billerName}`,
+        b.paymentMode === 'upi' ? b.upiRef || (b.hasScreenshot ? 'photo' : '') : '',
+        '',
+      ],
       { size: 7, colors: muted }
     );
     y += 26;
@@ -553,7 +583,7 @@ export async function eventScreenshotsPdf({ event, subtitle, bills, loadBatch, n
         doc.font(font).fontSize(size).fillColor(color);
         doc.text(text, x, y + dy, { width: COL_W, ellipsis: true, height: size + 3 });
       };
-      line(`Bill ${b.billLabel || b.ref} • ${formatDateTime(b.date)}`, 0, 'Helvetica-Bold', 8.5, INK);
+      line(`Bill ${b.billLabel || b.ref} • ${formatBillDate(b.date, b.backdated)}`, 0, 'Helvetica-Bold', 8.5, INK);
       line(`${b.customerName} • +91 ${b.customerMobile}`, 12, 'Helvetica', 8, INK);
       line(`${formatINR(b.totalAmount)} • UPI ref ${b.upiRef || '—'}`, 23, 'Helvetica', 7.5, MUTED);
       line(`Billed by ${b.billerName}${img ? ` • SHA-256 ${img.sha256.slice(0, 12)}…` : ''}`, 33, 'Helvetica', 7, MUTED);

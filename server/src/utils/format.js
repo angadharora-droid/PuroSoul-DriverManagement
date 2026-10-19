@@ -59,3 +59,8 @@ export function formatDate(date) {
     year: 'numeric',
   });
 }
+
+/** An event bill's date as printed — a backdated entry has a day, but no real time of day. */
+export function formatBillDate(date, backdated) {
+  return backdated ? formatDate(date) : formatDateTime(date);
+}

@@ -7,7 +7,7 @@ import Icon from '../../components/icons';
 import ScreenshotViewer from '../../components/ScreenshotViewer';
 import PaymentCamera from '../../components/PaymentCamera';
 import { useToast } from '../../components/toast';
-import { formatINR, formatDateTime, OTP_LENGTH } from '../../utils/format';
+import { formatINR, formatDateTime, cleanMobile, OTP_LENGTH, PAYMENT_LABELS, PAYMENT_ICONS } from '../../utils/format';
 import { dataUrlToBase64, formatBytes } from '../../utils/image';
 
 function useCountdown(target) {
@@ -52,14 +52,6 @@ const EMPTY_FORM = { customerName: '', customerMobile: '', qty: {}, paymentMode:
 
 const isBlankForm = (f) =>
   !f.customerName && !f.customerMobile && !Object.values(f.qty || {}).some(Number) && !f.paymentMode && !f.upiRef && !f.screenshot;
-
-/** Accepts pasted "+91 98765-43210" / "098765 43210" and keeps the bare 10 digits. */
-function cleanMobile(value) {
-  let d = String(value).replace(/\D/g, '');
-  if (d.length > 10 && d.startsWith('91')) d = d.slice(2);
-  if (d.length === 11 && d.startsWith('0')) d = d.slice(1);
-  return d.slice(0, 10);
-}
 
 // The unsent bill — payment photo included — is kept on this device until the
 // server has it, so a reload, a phone call or Android killing the tab never
@@ -123,13 +115,14 @@ function QtyStepper({ label, value, max, disabled, onChange }) {
   );
 }
 
+// Stacked (icon over text) so three fit side by side on a phone.
 function PayOption({ active, icon, title, subtitle, onClick }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-xl border-2 px-3.5 py-2.5 text-left transition-colors ${
+      className={`flex min-h-14 cursor-pointer flex-col items-center gap-1.5 rounded-xl border-2 px-2 py-2.5 text-center transition-colors ${
         active ? 'border-brand-600 bg-brand-50 text-brand-900' : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
       }`}
     >
@@ -138,7 +131,7 @@ function PayOption({ active, icon, title, subtitle, onClick }) {
       </span>
       <span className="min-w-0">
         <span className="block text-sm font-bold">{title}</span>
-        <span className="block text-xs text-slate-500">{subtitle}</span>
+        <span className="block text-[11px] leading-tight text-slate-500">{subtitle}</span>
       </span>
     </button>
   );
@@ -166,7 +159,7 @@ export default function EventBilling() {
   const [busy, setBusy] = useState(false);
   const [resendAvailableAt, setResendAvailableAt] = useState(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const [confirmUpi, setConfirmUpi] = useState(false);
+  const [confirmSave, setConfirmSave] = useState(false); // UPI / credit final check
 
   const [recent, setRecent] = useState(null);
   const [viewShot, setViewShot] = useState(null);
@@ -260,7 +253,7 @@ export default function EventBilling() {
     setStep('otp');
   }
 
-  /** Validates the form; cash goes straight to the OTP, UPI asks for a final check first. */
+  /** Validates the form; cash goes straight to the OTP, UPI and credit ask for a final check first. */
   function submitBill(e) {
     e.preventDefault();
     setError('');
@@ -269,10 +262,10 @@ export default function EventBilling() {
     if (!/^[6-9]\d{9}$/.test(form.customerMobile)) return setError("Enter the customer's 10-digit mobile number");
     if (!lines.length) return setError('Enter the quantity for at least one item');
     if (overStock) return setError(`Only ${Math.max(0, overStock.available)} × ${overStock.name} left in stock`);
-    if (!form.paymentMode) return setError('Choose how the customer paid — cash or UPI');
+    if (!form.paymentMode) return setError('Choose how the customer paid — cash, UPI or credit');
     if (form.paymentMode === 'upi' && !form.screenshot) return setError('Take a photo of the UPI payment');
-    // A UPI bill is final the moment it's saved (no OTP to back out of), so confirm it first.
-    if (form.paymentMode === 'upi') return setConfirmUpi(true);
+    // UPI and credit bills are final the moment they're saved (no OTP to back out of), so confirm first.
+    if (form.paymentMode !== 'cash') return setConfirmSave(true);
     saveBill();
   }
 
@@ -291,8 +284,8 @@ export default function EventBilling() {
       dropDraft(draftKey);
       billFromForm.current = true;
       if (data.verified) {
-        // UPI: final on save, no OTP.
-        setConfirmUpi(false);
+        // UPI / credit: final on save, no OTP.
+        setConfirmSave(false);
         setBill(data.bill);
         setForm(EMPTY_FORM);
         setRestored(false);
@@ -306,7 +299,7 @@ export default function EventBilling() {
       enterOtpStep(data.bill, data.otpSentTo);
       loadRecent();
     } catch (err) {
-      setConfirmUpi(false);
+      setConfirmSave(false);
       if (err.body?.bill) {
         // Saved, but the OTP SMS didn't go out — carry on to the OTP screen to resend.
         dropDraft(draftKey);
@@ -505,7 +498,9 @@ export default function EventBilling() {
             <p className="mx-auto mt-1 max-w-xs text-sm leading-relaxed text-slate-500">
               {bill.paymentMode === 'upi'
                 ? 'Saved with the UPI payment photo. Share the bill with the customer below.'
-                : `${bill.customerName} confirmed the purchase by OTP. Share the bill with them below.`}
+                : bill.paymentMode === 'credit'
+                  ? `Saved on credit — ${bill.customerName} still owes ${formatINR(bill.totalAmount)}. Share the bill with them below.`
+                  : `${bill.customerName} confirmed the purchase by OTP. Share the bill with them below.`}
             </p>
           </div>
 
@@ -536,8 +531,8 @@ export default function EventBilling() {
             </div>
             <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-600">
               <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 font-semibold ring-1 ring-slate-200">
-                <Icon name={bill.paymentMode === 'upi' ? 'phone' : 'banknotes'} className="h-3.5 w-3.5" />
-                {bill.paymentMode === 'upi' ? 'UPI' : 'Cash'}
+                <Icon name={PAYMENT_ICONS[bill.paymentMode]} className="h-3.5 w-3.5" />
+                {PAYMENT_LABELS[bill.paymentMode]}
               </span>
               {bill.upiRef && <span className="tnum font-mono">Ref {bill.upiRef}</span>}
               {bill.hasScreenshot && (
@@ -583,7 +578,7 @@ export default function EventBilling() {
           <div className="mt-5 rounded-xl bg-slate-50 px-4 py-3">
             <div className="flex items-center justify-between gap-3 text-sm">
               <span className="text-slate-500">
-                Bill <span className="tnum font-bold text-slate-800">{formatINR(bill.totalAmount)}</span> • {bill.paymentMode === 'upi' ? 'UPI' : 'Cash'}
+                Bill <span className="tnum font-bold text-slate-800">{formatINR(bill.totalAmount)}</span> • {PAYMENT_LABELS[bill.paymentMode]}
               </span>
               <span className={`tnum flex items-center gap-1.5 font-mono font-bold ${expired ? 'text-red-600' : otpSecondsLeft < 60 ? 'text-amber-600' : 'text-slate-700'}`}>
                 <Icon name="clock" className="h-4 w-4" strokeWidth={2} />
@@ -761,9 +756,10 @@ export default function EventBilling() {
 
             <div>
               <p className="mb-2 text-sm font-medium text-slate-700">Paid by<span className="ml-0.5 text-red-500" aria-hidden="true">*</span></p>
-              <div className="grid grid-cols-2 gap-2">
-                <PayOption active={form.paymentMode === 'cash'} icon="banknotes" title="Cash" subtitle="OTP to customer" onClick={() => setField('paymentMode', 'cash')} />
-                <PayOption active={form.paymentMode === 'upi'} icon="phone" title="UPI" subtitle="Photo, no OTP" onClick={() => setField('paymentMode', 'upi')} />
+              <div className="grid grid-cols-3 gap-2">
+                <PayOption active={form.paymentMode === 'cash'} icon={PAYMENT_ICONS.cash} title="Cash" subtitle="OTP to customer" onClick={() => setField('paymentMode', 'cash')} />
+                <PayOption active={form.paymentMode === 'upi'} icon={PAYMENT_ICONS.upi} title="UPI" subtitle="Photo, no OTP" onClick={() => setField('paymentMode', 'upi')} />
+                <PayOption active={form.paymentMode === 'credit'} icon={PAYMENT_ICONS.credit} title="Credit" subtitle="Pays later, no OTP" onClick={() => setField('paymentMode', 'credit')} />
               </div>
             </div>
 
@@ -827,15 +823,15 @@ export default function EventBilling() {
 
             <Button
               type="submit"
-              icon={busy ? undefined : form.paymentMode === 'upi' ? 'check' : 'send'}
+              icon={busy ? undefined : form.paymentMode === 'cash' || !form.paymentMode ? 'send' : 'check'}
               className="w-full py-3"
               loading={busy}
               disabled={totalQty === 0 || !form.paymentMode}
             >
-              {form.paymentMode === 'upi'
+              {form.paymentMode === 'upi' || form.paymentMode === 'credit'
                 ? busy
                   ? 'Saving bill…'
-                  : `Save UPI bill${totalQty > 0 ? ` • ${formatINR(totalAmount)}` : ''}`
+                  : `Save ${form.paymentMode === 'upi' ? 'UPI' : 'credit'} bill${totalQty > 0 ? ` • ${formatINR(totalAmount)}` : ''}`
                 : busy
                   ? 'Sending OTP…'
                   : totalQty > 0
@@ -847,13 +843,19 @@ export default function EventBilling() {
               <Icon name="info" className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               {form.paymentMode === 'upi'
                 ? 'No OTP for UPI — the payment photo is the proof. The bill is final once saved.'
-                : "Cash bills: the OTP goes to the customer's phone. Ask them for the code once they've paid."}
+                : form.paymentMode === 'credit'
+                  ? 'No OTP for credit — the bill records that the customer owes this amount. It is final once saved.'
+                  : "Cash bills: the OTP goes to the customer's phone. Ask them for the code once they've paid."}
             </p>
           </form>
         </div>
       </div>
 
-      <Modal open={confirmUpi} title="Save this UPI bill?" onClose={() => !busy && setConfirmUpi(false)}>
+      <Modal
+        open={confirmSave}
+        title={`Save this ${form.paymentMode === 'upi' ? 'UPI' : 'credit'} bill?`}
+        onClose={() => !busy && setConfirmSave(false)}
+      >
         <div className="space-y-3 text-sm">
           <div className="rounded-xl bg-slate-50 p-3.5">
             <p className="font-semibold text-slate-900">{form.customerName.trim()}</p>
@@ -871,17 +873,25 @@ export default function EventBilling() {
               <span className="tnum text-lg font-bold text-brand-800">{formatINR(totalAmount)}</span>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            {form.screenshot && (
-              <img src={form.screenshot.dataUrl} alt="UPI payment photo" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
-            )}
+          {form.paymentMode === 'upi' ? (
+            <div className="flex items-center gap-3">
+              {form.screenshot && (
+                <img src={form.screenshot.dataUrl} alt="UPI payment photo" className="h-20 w-14 shrink-0 rounded-lg border border-slate-200 object-cover" />
+              )}
+              <p className="text-xs leading-relaxed text-slate-600">
+                Check the photo shows <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> received
+                {form.upiRef ? <> (UTR <span className="tnum font-mono">{form.upiRef}</span>)</> : ''}. No OTP is sent for UPI — once saved, the bill can't be changed.
+              </p>
+            </div>
+          ) : (
             <p className="text-xs leading-relaxed text-slate-600">
-              Check the photo shows <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> received
-              {form.upiRef ? <> (UTR <span className="tnum font-mono">{form.upiRef}</span>)</> : ''}. No OTP is sent for UPI — once saved, the bill can't be changed.
+              Check with {form.customerName.trim() || 'the customer'} that they will pay{' '}
+              <span className="tnum font-bold text-slate-900">{formatINR(totalAmount)}</span> later. No OTP is sent for credit — once saved, the bill can't be
+              changed.
             </p>
-          </div>
+          )}
           <div className="flex justify-end gap-2 pt-1">
-            <Button variant="secondary" disabled={busy} onClick={() => setConfirmUpi(false)}>Go back</Button>
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirmSave(false)}>Go back</Button>
             <Button icon={busy ? undefined : 'check'} loading={busy} onClick={saveBill}>Save bill</Button>
           </div>
         </div>
@@ -905,7 +915,7 @@ export default function EventBilling() {
                       <p className="truncate text-sm font-semibold text-slate-900">{b.customerName}</p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {formatDateTime(b.createdAt)} • {b.billLabel ? `bill ${b.billLabel}` : <span className="tnum font-mono">{b.ref}</span>} •{' '}
-                        {b.paymentMode === 'upi' ? 'UPI' : 'Cash'}
+                        {PAYMENT_LABELS[b.paymentMode]}
                       </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
